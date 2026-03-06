@@ -1,0 +1,36 @@
+seed: 42
+device: cpu
+dtype: float64
+
+data:
+  T: 4
+  d: 64
+  covariance_type: tridiagonal   # options: identity, tridiagonal
+  rho: 0.5
+
+masking:
+  strategy: single_random
+  mask_value: 1.0
+
+model:
+  r: 64
+  beta: 1.0
+
+training:
+  alpha: 1.0
+  lambda_reg: 1.0
+  learning_rate: 0.001
+  epochs: 200
+  optimizer: adam
+
+evaluation:
+  compute_bayes_baseline: true
+  save_weights: true
+  save_spectrum: true
+
+paths:
+  results_dir: results/raw
+  figures_dir: results/figures
+  checkpoints_dir: experiments/checkpoints
+  logs_dir: experiments/logs
+  summaries_dir: experiments/summaries
