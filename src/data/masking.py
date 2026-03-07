@@ -1,7 +1,7 @@
 from __future__ import annotations
 import numpy as np
 
-
+# ========= SINGLE-TOKEN MASKING ==========
 def make_mask_embedding(T: int, d: int, mask_value: float = 1.0) -> np.ndarray:
     """Creates and returns the mask embedding matrix U = 1_T u^T as an array of shape (T, d)."""
     if T <= 0 or d <= 0:
@@ -72,7 +72,7 @@ def build_masked_dataset(
     return X_tilde, Y_target, mask_indices
 
 
-# ===== MULTI-TOKEN MASKING =====
+# ========= MULTI-TOKEN MASKING ==========
 def resolve_number_of_masked_tokens(
     T: int,
     n_masked_tokens: int | None = None,

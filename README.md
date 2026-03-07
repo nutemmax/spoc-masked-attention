@@ -73,9 +73,7 @@ spoc-masked-attention/
 │   │
 │   ├── evaluation/                     # evaluation metrics and analysis
 │   │   ├── __init__.py                 # marks evaluation as a Python module
-│   │   ├── metrics.py                  # generic experiment metrics
-│   │   ├── spectra.py                  # eigenvalues, spectral concentration, spectrum utilities
-│   │   └── risk.py                     # population risk and related evaluation functions
+│   │   └── metrics.py                  # experiment metrics
 │   │
 │   ├── visualization/                  # plotting and visualization helpers
 │   │   ├── __init__.py                 # marks visualization as a Python module
