@@ -51,37 +51,33 @@ spoc-masked-attention/
 │
 ├── src/                                # main source code
 │   ├── data/                           # synthetic data generation and masking logic
-│   │   ├── __init__.py                 # marks data as a Python module
+│   │   ├── __init__.py                
 │   │   ├── generator.py                # generates Gaussian sequence samples X
 │   │   ├── covariance.py               # builds covariance matrices (identity, tridiagonal, etc.)
 │   │   └── masking.py                  # applies masking and constructs corrupted inputs
 │   │
 │   ├── models/                         # model definitions
-│   │   ├── __init__.py                 # marks models as a Python module
+│   │   ├── __init__.py                 
 │   │   ├── attention.py                # single-head tied-attention model and forward pass
 │   │   └── parameters.py               # helper functions for W, S, initialization, shapes
 │   │
 │   ├── training/                       # training logic
-│   │   ├── __init__.py                 # marks training as a Python module
+│   │   ├── __init__.py                 
 │   │   ├── losses.py                   # reconstruction loss and regularization terms
 │   │   ├── trainer.py                  # training loop and experiment orchestration
 │   │   └── optimizer.py                # optimizer creation and training utilities
 │   │
 │   ├── baselines/                      # baseline methods
-│   │   ├── __init__.py                 # marks baselines as a Python module
+│   │   ├── __init__.py                 
 │   │   └── bayes.py                    # Bayes-optimal Gaussian reconstruction baseline
 │   │
 │   ├── evaluation/                     # evaluation metrics and analysis
 │   │   ├── __init__.py                 # marks evaluation as a Python module
 │   │   └── metrics.py                  # experiment metrics
 │   │
-│   ├── visualization/                  # plotting and visualization helpers
-│   │   ├── __init__.py                 # marks visualization as a Python module
-│   │   ├── plots.py                    # main plotting functions for losses, risks, norms, spectra
-│   │   └── attention_maps.py           # visualization of attention matrices
-│   │
-│   └── utils/                          # miscellaneous utilities
-│       ├── __init__.py                 # marks utils as a Python module
+│   └── utils/                          # utilities
+│       ├── __init__.py                 
+│       ├── plots.py                    # main plotting functions for losses, risks, norms, spectra
 │       ├── io.py                       # saving/loading results, configs, arrays, checkpoints
 │       ├── seed.py                     # random seed handling and reproducibility
 │       └── config.py                   # configuration loading/parsing helpers
