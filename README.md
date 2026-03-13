@@ -4,14 +4,14 @@ This repository contains the implementation for a research project on **masked s
 
 The goal is to study how attention weights are learned when reconstructing masked tokens from correlated Gaussian sequences, and to analyze the resulting spectral properties of the learned attention matrix.
 
-The project is inspired by the following papers:
+References (NB to keep track of):
 
 - *Single-Head Attention in High Dimensions: A Theory of Generalization, Weight Spectra, and Scaling Laws*
 - *A Random Matrix Theory of Masked Self-Supervised Regression*
 
 # Installation
 
-Clone the repository:
+Clone the repo:
 
 ```bash
 git clone https://github.com/<username>/spoc-masked-attention.git
