@@ -1,0 +1,33 @@
+{
+  "experiment": {
+    "save_root": "results/sweep_alpha/iter_1000/alpha_0.5-5.0_beta_1.0_lr_0.01_lambda_0.001_cov_toeplitz_steps_1000_20260313-114259",
+    "run_name": null,
+    "seed": 0,
+    "experiment_number": 5
+  },
+  "data": {
+    "T": 5,
+    "d": 50,
+    "covariance_type": "toeplitz",
+    "rho": 0.5,
+    "length_scale": null,
+    "eta": null,
+    "mask_value": 1.0
+  },
+  "model": {
+    "r": 50,
+    "beta": 1.0,
+    "normalize_sqrt_d": false,
+    "dtype": "float64",
+    "device": "cpu"
+  },
+  "training": {
+    "alpha": 5.0,
+    "n_steps": 1000,
+    "learning_rate": 0.01,
+    "lambda_reg": 0.001
+  },
+  "evaluation": {
+    "n_population": 5000
+  }
+}

@@ -58,14 +58,12 @@ spoc-masked-attention/
 │   │
 │   ├── models/                         # model definitions
 │   │   ├── __init__.py                 
-│   │   ├── attention.py                # single-head tied-attention model and forward pass
-│   │   └── parameters.py               # helper functions for W, S, initialization, shapes
+│   │   └── attention.py                # single-head tied-attention model and forward pass
 │   │
 │   ├── training/                       # training logic
 │   │   ├── __init__.py                 
 │   │   ├── losses.py                   # reconstruction loss and regularization terms
-│   │   ├── trainer.py                  # training loop and experiment orchestration
-│   │   └── optimizer.py                # optimizer creation and training utilities
+│   │   └── trainer.py                  # training loop and experiment orchestration
 │   │
 │   ├── baselines/                      # baseline methods
 │   │   ├── __init__.py                 

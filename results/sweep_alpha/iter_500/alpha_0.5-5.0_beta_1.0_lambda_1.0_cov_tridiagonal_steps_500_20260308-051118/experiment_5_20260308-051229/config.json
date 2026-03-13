@@ -1,0 +1,33 @@
+{
+  "experiment": {
+    "save_root": "results/sweep_alpha/alpha_0.5-5.0_beta_1.0_lambda_1.0_cov_tridiagonal_steps_500_20260308-051118",
+    "run_name": null,
+    "seed": 0,
+    "experiment_number": 5
+  },
+  "data": {
+    "T": 4,
+    "d": 50,
+    "covariance_type": "tridiagonal",
+    "rho": 0.5,
+    "length_scale": null,
+    "eta": null,
+    "mask_value": 1.0
+  },
+  "model": {
+    "r": 50,
+    "beta": 1.0,
+    "normalize_sqrt_d": true,
+    "dtype": "float64",
+    "device": "cpu"
+  },
+  "training": {
+    "alpha": 5.0,
+    "n_steps": 500,
+    "learning_rate": 0.001,
+    "lambda_reg": 1.0
+  },
+  "evaluation": {
+    "n_population": 5000
+  }
+}

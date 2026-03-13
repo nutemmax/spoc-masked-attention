@@ -1,36 +1,29 @@
-seed: 42
-device: cpu
-dtype: float64
+experiment:
+  save_root: results/individual_runs
+  run_name: null
+  seed: 42
 
 data:
   T: 4
-  d: 64
-  covariance_type: tridiagonal   # options: identity, tridiagonal
-  rho: 0.5
-
-masking:
-  strategy: single_random
+  d: 100
+  covariance_type: tridiagonal   # options: identity, tridiagonal, toeplitz etc
+  rho: 0.6
+  length_scale: null
+  eta: null
   mask_value: 1.0
 
 model:
-  r: 64
-  beta: 1.0
+  r: 100
+  beta: 10.0
+  normalize_sqrt_d: True
+  dtype: float64
+  device: cpu
 
 training:
   alpha: 1.0
-  lambda_reg: 1.0
+  n_steps: 300
   learning_rate: 0.001
-  epochs: 200
-  optimizer: adam
+  lambda_reg: 0.0
 
 evaluation:
-  compute_bayes_baseline: true
-  save_weights: true
-  save_spectrum: true
-
-paths:
-  results_dir: results/raw
-  figures_dir: results/figures
-  checkpoints_dir: experiments/checkpoints
-  logs_dir: experiments/logs
-  summaries_dir: experiments/summaries
+  n_population: 5000

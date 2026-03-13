@@ -1,6 +1,4 @@
-# =========================
 # Python
-# =========================
 __pycache__/
 *.py[cod]
 *.pyo
@@ -9,55 +7,38 @@ __pycache__/
 dist/
 build/
 
-# =========================
 # Virtual environments
-# =========================
 spoc/
 venv/
 .venv/
 env/
 
-# =========================
 # Jupyter
-# =========================
 .ipynb_checkpoints/
 
-# =========================
 # OS files
-# =========================
 .DS_Store
 Thumbs.db
 
-# =========================
 # IDE
-# =========================
 .vscode/
 .idea/
 
-# =========================
 # Logs
-# =========================
 *.log
 
-# =========================
 # Experiment outputs
-# =========================
-results/raw/
-results/processed/
-results/figures/
+results/**/*.npy
+results/**/*.pt
 
 experiments/logs/
 experiments/checkpoints/
 experiments/summaries/
 
-# =========================
 # Pytest
-# =========================
 .pytest_cache/
 
-# =========================
 # Temporary files
-# =========================
 *.tmp
 *.swp
 *.bak

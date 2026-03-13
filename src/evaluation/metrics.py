@@ -50,7 +50,7 @@ def compute_spectral_concentration(eigvals: np.ndarray) -> float:
 
     trace = float(np.sum(eigvals))
     if np.isclose(trace, 0.0):
-        raise ValueError("Trace is zero, cannot compute spectral concentration.")
+        return float("nan")
 
     return float(eigvals[0] / trace)
 
@@ -58,8 +58,9 @@ def compute_spectral_observables(W: np.ndarray) -> dict[str, float | np.ndarray]
     """Compute spectral observables associated with W."""
     S = attention_matrix(W)
     eigvals = compute_eigenvalues_symmetric(S)
-    trace = compute_trace(S)
-    top_eig = eigvals[0]
+    trace = float(compute_trace(S))
+    top_eig = float(eigvals[0])
+    min_eig = float(eigvals[-1])
     spectral_concentration = compute_spectral_concentration(eigvals)
     weight_norm = compute_weights_norm(W)
 
@@ -68,6 +69,7 @@ def compute_spectral_observables(W: np.ndarray) -> dict[str, float | np.ndarray]
         "eigenvalues": eigvals,
         "trace": trace,
         "top_eigenvalue": top_eig,
+        "min_eigenvalue": min_eig,
         "spectral_concentration": spectral_concentration,
         "weight_norm": weight_norm,
     }

@@ -1,0 +1,14 @@
+{
+  "alpha": 1.0,
+  "seed": 0,
+  "n_train": 2500,
+  "n_population": 5000,
+  "train_loss": 1.1375518027857476,
+  "population_risk": 1.1343432253408334,
+  "bayes_population_risk": 0.9382971014492754,
+  "empirical_bayes_risk": 0.935381205186696,
+  "weight_norm": 0.0044163295078707455,
+  "trace_s": 0.004416329507870745,
+  "top_eigenvalue": 0.00042882748074787646,
+  "R1": 0.09710042694586618
+}

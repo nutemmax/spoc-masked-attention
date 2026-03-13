@@ -91,7 +91,7 @@ class TiedSingleHeadAttention(nn.Module):
         self.r = r
         self.beta = float(beta)
         self.normalize_sqrt_d = normalize_sqrt_d
-
+        # weights initialized with 1/sqrt(r) scaling for better convergence
         W0 = torch.randn(d, r, dtype=dtype, device=device) / math.sqrt(r)
         self.W = nn.Parameter(W0)
 
@@ -122,6 +122,6 @@ class TiedSingleHeadAttention(nn.Module):
         if mask_indices.shape[0] != Y_hat_batch.shape[0]:
             raise ValueError("mask_indices must match the batch size.")
         
-        mask_indices = mask_indices.long()
+        mask_indices = mask_indices.to(device=Y_hat_batch.device, dtype=torch.long)
         batch_indices = torch.arange(Y_hat_batch.shape[0], device=Y_hat_batch.device)
         return Y_hat_batch[batch_indices, mask_indices, :]

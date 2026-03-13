@@ -1,0 +1,45 @@
+{
+  "alphas": [
+    0.5,
+    1.0,
+    2.0,
+    3.0,
+    5.0
+  ],
+  "seeds": [
+    0
+  ],
+  "base_config": {
+    "experiment": {
+      "save_root": "results/individual_runs",
+      "run_name": null,
+      "seed": 0,
+      "experiment_number": null
+    },
+    "data": {
+      "T": 5,
+      "d": 50,
+      "covariance_type": "toeplitz",
+      "rho": 0.5,
+      "length_scale": null,
+      "eta": null,
+      "mask_value": 1.0
+    },
+    "model": {
+      "r": 50,
+      "beta": 1.0,
+      "normalize_sqrt_d": false,
+      "dtype": "float64",
+      "device": "cpu"
+    },
+    "training": {
+      "alpha": 1.0,
+      "n_steps": 1000,
+      "learning_rate": 0.001,
+      "lambda_reg": 0.0001
+    },
+    "evaluation": {
+      "n_population": 5000
+    }
+  }
+}
