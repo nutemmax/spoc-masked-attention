@@ -32,67 +32,51 @@ pip install -r requirements.txt
 # Repo structure
 ```bash
 spoc-masked-attention/
-├── README.md                           # project overview, setup instructions, usage
-├── requirements.txt                    # pinned Python dependencies
-├── .gitignore                          # files and folders excluded from Git
-│
-├── configs/                            # experiment configuration files
-│   ├── default.yaml                    # default configuration used for standard runs
-│   ├── experiment_identity.yaml        # config for independent-token baseline (Sigma = I)
-│   └── experiment_tridiagonal.yaml     # config for structured tridiagonal covariance
-│
-├── notebooks/                          # exploratory notebooks, sanity checks, analysis
-│
-├── scripts/                            # executable entrypoints for experiments
-│   ├── run_experiment.py               # runs one experiment from a given config
-│   ├── sweep_alpha.py                  # runs multiple experiments over alpha values
-│   ├── evaluate_bayes_baseline.py      # computes Bayes-optimal baseline performance
-│   └── plot_results.py                 # generates plots from saved results
-│
-├── src/                                # main source code
-│   ├── data/                           # synthetic data generation and masking logic
-│   │   ├── __init__.py                
-│   │   ├── generator.py                # generates Gaussian sequence samples X
-│   │   ├── covariance.py               # builds covariance matrices (identity, tridiagonal, etc.)
-│   │   └── masking.py                  # applies masking and constructs corrupted inputs
-│   │
-│   ├── models/                         # model definitions
-│   │   ├── __init__.py                 
-│   │   └── attention.py                # single-head tied-attention model and forward pass
-│   │
-│   ├── training/                       # training logic
-│   │   ├── __init__.py                 
-│   │   ├── losses.py                   # reconstruction loss and regularization terms
-│   │   └── trainer.py                  # training loop and experiment orchestration
-│   │
-│   ├── baselines/                      # baseline methods
-│   │   ├── __init__.py                 
-│   │   └── bayes.py                    # Bayes-optimal Gaussian reconstruction baseline
-│   │
-│   ├── evaluation/                     # evaluation metrics and analysis
-│   │   ├── __init__.py                 # marks evaluation as a Python module
-│   │   └── metrics.py                  # experiment metrics
-│   │
-│   └── utils/                          # utilities
-│       ├── __init__.py                 
-│       ├── plots.py                    # main plotting functions for losses, risks, norms, spectra
-│       ├── io.py                       # saving/loading results, configs, arrays, checkpoints
-│       ├── seed.py                     # random seed handling and reproducibility
-│       └── config.py                   # configuration loading/parsing helpers
-│
-├── results/                            # saved outputs from experiments
-│   ├── raw/                            # raw outputs directly produced by runs
-│   ├── processed/                      # processed summaries and aggregated results
-│   └── figures/                        # plots and generated figures
-│
-├── tests/                              # unit tests
-│   ├── test_covariance.py              # tests for covariance matrix generation
-│   ├── test_masking.py                 # tests for masking logic
-│   ├── test_bayes.py                   # tests for Bayes baseline formulas
-│   └── test_attention.py               # tests for attention model behavior
-│
-└── experiments/                        # experiment bookkeeping
-    ├── logs/                           # run logs and console outputs
-    ├── checkpoints/                    # saved model weights/checkpoints
-    └── summaries/                      # compact summaries of completed experiments
+├── configs/                          # YAML configuration files defining experiments
+├── logs/                             # Slurm stdout/stderr logs from cluster runs
+├── notebooks/
+│   └── hyperparam_sweep_analysis.ipynb  
+├── results/                          # all experiment outputs (runs, sweeps, metrics, plots)
+├── scripts/                          # main Python entrypoints for running and analyzing experiments
+│   ├── aggregate_sweep.py            # aggregates runs into summary metrics, plots, and sweep_config.json
+│   ├── evaluate_bayes_baseline.py    # computes Bayes-optimal baseline performance
+│   ├── repo_tree.py                  # utility to print repository structure
+│   ├── run_experiment.py             # runs a single experiment from a config
+│   └── sweep_alpha.py                # (legacy/local) script for sweeping over alpha values
+├── slurm/                            # Slurm job scripts for running experiments on the cluster
+│   ├── old/                          # deprecated or older job scripts
+│   │   ├── grid_sweep_alpha.sh       # old grid search script
+│   │   ├── run_experiment.slurm      # old single-run Slurm script
+│   │   └── small_grid_10k_iter.sh    # old experiment setup
+│   ├── aggregate_sweep.slurm         # runs aggregation over completed sweeps
+│   ├── alpha_array.slurm             # array job for sweeping over alpha values
+│   └── ntrain_array.slurm            # array job for sweeping over training set sizes (n_train)
+├── src/                              # core source code (modular, reusable components)
+│   ├── baselines/                    # baseline methods
+│   │   ├── __init__.py
+│   │   └── bayes.py                  # Bayes-optimal Gaussian reconstruction baseline
+│   ├── data/                         # synthetic data generation and preprocessing
+│   │   ├── __init__.py
+│   │   ├── covariance.py             # covariance matrix construction (identity, structured, etc.)
+│   │   ├── generator.py              # Gaussian sequence generation
+│   │   └── masking.py                # masking mechanism for corrupted inputs
+│   ├── evaluation/                   # evaluation metrics and analysis tools
+│   │   ├── __init__.py
+│   │   └── metrics.py                # performance, spectral, and convergence metrics
+│   ├── models/                       # model definitions
+│   │   ├── __init__.py
+│   │   └── attention.py              # tied single-head attention model
+│   ├── training/                     # training logic
+│   │   ├── __init__.py
+│   │   ├── losses.py                 # loss functions and regularization
+│   │   └── trainer.py                # training loop and experiment orchestration
+│   └── utils/                        # utility functions
+│       ├── __init__.py
+│       ├── config.py                 # config loading and override logic
+│       ├── io.py                     # saving/loading experiment outputs
+│       └── plots.py                  # plotting utilities
+├── .gitignore                        # ignored files (envs, cache, results, etc.)
+├── cluster-commands.sh               # helper commands for running jobs on the cluster
+├── README.md                         # project documentation and usage instructions
+└── requirements.txt                  # Python dependencies
 ```
