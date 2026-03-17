@@ -9,6 +9,15 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
 
+def extract_datetime_from_run_name(run_name: str) -> str | None:
+    parts = run_name.split("_")
+    if not parts:
+        return None
+    last = parts[-1]
+    if len(last) == 15 and last[8] == "-":
+        return last
+    return None
+
 
 def collect_runs(sweep_dir: Path) -> list[dict]:
     rows = []
@@ -30,7 +39,12 @@ def collect_runs(sweep_dir: Path) -> list[dict]:
             print(f"[skip] Failed to read {metrics_path}: {e}")
             continue
 
-        row = {"run_name": subdir.name, **metrics}
+        row = {
+            "run_name": subdir.name,
+            "experiment_number": None,
+            **metrics,
+            "datetime": extract_datetime_from_run_name(subdir.name),
+        }
         rows.append(row)
 
     return rows
@@ -133,10 +147,37 @@ def write_summary_csv(rows: list[dict], path: Path) -> None:
     if not rows:
         return
 
-    fieldnames = sorted({k for row in rows for k in row.keys()})
+    fieldnames = [
+        "alpha",
+        "seed",
+        "n_train",
+        "n_population",
+        "train_loss",
+        "population_risk",
+        "bayes_population_risk",
+        "empirical_bayes_risk",
+        "generalization_gap",
+        "excess_population_risk",
+        "runtime_seconds",
+        "runtime_per_step_seconds",
+        "initial_objective",
+        "final_objective",
+        "best_objective",
+        "objective_reduction",
+        "initial_train_loss_history",
+        "final_train_loss_history",
+        "best_train_loss_history",
+        "train_loss_reduction",
+        "weight_norm",
+        "trace_s",
+        "top_eigenvalue",
+        "min_eigenvalue",
+        "R1",
+        "datetime",
+    ]
 
     with open(path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(rows)
 

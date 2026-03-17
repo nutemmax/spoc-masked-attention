@@ -26,4 +26,4 @@ source .venv/bin/activate
 # ====== RUN ======
 echo "Aggregating sweeps under: $SWEEP_ROOT"
 
-python -u scripts/aggregate_sweep.py --sweep-dir "$SWEEP_ROOT"
+python -u scripts/aggregate_sweep.py --sweep-dir "$SWEEP_ROOT" --force
