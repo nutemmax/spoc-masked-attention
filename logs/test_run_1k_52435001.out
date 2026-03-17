@@ -1,0 +1,28 @@
+Saved run to: /home/anastass/spoc-masked-attention/results/individual/default/alpha_1.0_seed_42_20260317-141643
+{
+  "alpha": 1.0,
+  "seed": 42,
+  "n_train": 10000,
+  "n_population": 5000,
+  "train_loss": 0.8915540363676262,
+  "population_risk": 0.9123336593359415,
+  "bayes_population_risk": 0.1273214285714286,
+  "empirical_bayes_risk": 0.12839194401231976,
+  "generalization_gap": 0.02077962296831526,
+  "excess_population_risk": 0.7850122307645129,
+  "runtime_seconds": 122.82891779392958,
+  "runtime_per_step_seconds": 0.12282891779392957,
+  "initial_objective": 0.9144319501432845,
+  "final_objective": 0.8915546828955474,
+  "best_objective": 0.8915546828955474,
+  "objective_reduction": 0.022877267247737088,
+  "initial_train_loss_history": 0.908251838436101,
+  "final_train_loss_history": 0.8915540363676262,
+  "best_train_loss_history": 0.8915540363676262,
+  "train_loss_reduction": 0.01669780206847482,
+  "weight_norm": 1.4483002681786343,
+  "trace_s": 1.4483002681786343,
+  "top_eigenvalue": 0.12509640780412046,
+  "min_eigenvalue": 7.827807831033862e-09,
+  "R1": 0.0863746355315119
+}

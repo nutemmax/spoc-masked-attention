@@ -54,6 +54,7 @@ def get_default_config() -> dict:
         },
         "training": {
             "alpha": 5.0,
+            "n_train": None,
             "n_steps": 600,
             "learning_rate": 1e-3,
             "lambda_reg": 0.0,
@@ -95,6 +96,7 @@ def load_config(config_path: str | None) -> dict:
 def apply_overrides(
     config: dict,
     alpha: float | None,
+    n_train: int | None,
     seed: int | None,
     save_root: str | None,
     run_name: str | None,
@@ -105,6 +107,8 @@ def apply_overrides(
 
     if alpha is not None:
         updated["training"]["alpha"] = float(alpha)
+    if n_train is not None:
+        updated["training"]["n_train"] = int(n_train)
     if seed is not None:
         updated["experiment"]["seed"] = int(seed)
     if save_root is not None:
@@ -169,21 +173,28 @@ def numpy_to_torch(X: np.ndarray, dtype: torch.dtype, device: str | torch.device
     return torch.tensor(X, dtype=dtype, device=device)
 
 
+def format_float_for_name(x: float) -> str:
+    """Format float compactly for folder names."""
+    if float(x).is_integer():
+        return f"{x:.1f}"
+    return f"{x:.3f}".rstrip("0").rstrip(".")
+
+
 def build_run_name(config: dict) -> str:
-    """Build a unique run name."""
+    """Build a unique and informative run name."""
     custom_name = config["experiment"]["run_name"]
     if custom_name is not None:
         return str(custom_name)
 
-    save_root = PROJECT_ROOT / config["experiment"]["save_root"]
-    save_root.mkdir(parents=True, exist_ok=True)
-
-    experiment_number = config["experiment"].get("experiment_number")
-    if experiment_number is None:
-        experiment_number = get_next_experiment_number(save_root)
-
+    seed = int(config["experiment"]["seed"])
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    return f"experiment_{experiment_number}_{timestamp}"
+
+    n_train = config["training"].get("n_train")
+    if n_train is not None:
+        return f"ntrain_{int(n_train)}_seed_{seed}_{timestamp}"
+
+    alpha = format_float_for_name(float(config["training"]["alpha"]))
+    return f"alpha_{alpha}_seed_{seed}_{timestamp}"
 
 
 def create_run_dir(config: dict) -> Path:
@@ -196,44 +207,6 @@ def create_run_dir(config: dict) -> Path:
     run_dir.mkdir(parents=True, exist_ok=False)
     return run_dir
 
-
-# def compute_run_metrics(
-#     W: np.ndarray,
-#     sigma: np.ndarray,
-#     train_loss: float,
-#     population_risk: float,
-#     bayes_population_risk: float,
-#     empirical_bayes_risk: float,
-#     alpha: float,
-#     seed: int,
-#     n_train: int,
-#     n_population: int,
-# ) -> tuple[dict, np.ndarray, np.ndarray]:
-#     """Compute scalar and spectral metrics for one run."""
-#     S = attention_matrix(W)
-#     eigenvalues = compute_eigenvalues_symmetric(S)
-#     trace_s = compute_trace(S)
-#     top_eigenvalue = float(eigenvalues[0])
-#     R1 = compute_spectral_concentration(eigenvalues)
-#     weight_norm = compute_weights_norm(W)
-
-#     metrics = {
-#         "alpha": float(alpha),
-#         "seed": int(seed),
-#         "n_train": int(n_train),
-#         "n_population": int(n_population),
-#         "train_loss": float(train_loss),
-#         "population_risk": float(population_risk),
-#         "bayes_population_risk": float(bayes_population_risk),
-#         "empirical_bayes_risk": float(empirical_bayes_risk),
-#         "weight_norm": float(weight_norm),
-#         "trace_s": float(trace_s),
-#         "top_eigenvalue": float(top_eigenvalue),
-#         "R1": float(R1),
-#     }
-
-#     return metrics, S, eigenvalues
-
 def compute_run_metrics(
     W: np.ndarray,
     sigma: np.ndarray,
@@ -241,7 +214,7 @@ def compute_run_metrics(
     population_risk: float,
     bayes_population_risk: float,
     empirical_bayes_risk: float,
-    alpha: float,
+    alpha: float | None,
     seed: int,
     n_train: int,
     n_population: int,
@@ -279,7 +252,7 @@ def compute_run_metrics(
     excess_population_risk = float(population_risk - bayes_population_risk)
 
     metrics = {
-        "alpha": float(alpha),
+        "alpha": float(alpha) if alpha is not None else None,
         "seed": int(seed),
         "n_train": int(n_train),
         "n_population": int(n_population),
@@ -330,7 +303,7 @@ def save_run_arrays(run_dir: Path, W: np.ndarray, S: np.ndarray, sigma: np.ndarr
     np.save(run_dir / "eigenvalues.npy", eigenvalues)
 
 
-def save_run_plots(run_dir: Path, S: np.ndarray, sigma: np.ndarray, eigenvalues: np.ndarray) -> None:
+def save_run_plots(run_dir: Path, S: np.ndarray, sigma: np.ndarray, eigenvalues: np.ndarray, history: dict[str, list[float]]) -> None:
     """Save plots for one run."""
     fig, _ = plot_eigenvalues(eigenvalues, title="Eigenvalues of S")
     fig.savefig(run_dir / "eigenvalues.png", bbox_inches="tight")
@@ -348,6 +321,10 @@ def save_run_plots(run_dir: Path, S: np.ndarray, sigma: np.ndarray, eigenvalues:
     fig.savefig(run_dir / "sigma_heatmap.png", bbox_inches="tight")
     plt.close(fig)
 
+    fig, _ = plot_training_history(history, title="Training convergence")
+    fig.savefig(run_dir / "training_convergence.png", bbox_inches="tight")
+    plt.close(fig)
+
 
 def run_experiment(config: dict) -> dict:
     """Run one experiment and return all outputs."""
@@ -357,8 +334,15 @@ def run_experiment(config: dict) -> dict:
     T = int(config["data"]["T"])
     d = int(config["data"]["d"])
     r = int(config["model"]["r"])
-    alpha = float(config["training"]["alpha"])
+    alpha = config["training"].get("alpha")
+    n_train_override = config["training"].get("n_train")
     mask_value = float(config["data"]["mask_value"])
+    if n_train_override is not None:
+        n_train_override = int(n_train_override)
+        if n_train_override <= 0:
+            raise ValueError("n_train must be positive.")
+    else:
+        alpha = float(alpha)
 
     if r != d:
         raise ValueError("Current setup expects r = d.")
@@ -374,13 +358,22 @@ def run_experiment(config: dict) -> dict:
     if not is_positive_definite(sigma):
         raise ValueError("Chosen covariance matrix is not positive definite.")
 
-    X_train, X_tilde_train, _, mask_train = generate_single_mask_dataset_from_alpha(
-        alpha=alpha,
-        sigma=sigma,
-        d=d,
-        mask_value=mask_value,
-        rng=rng,
-    )
+    if n_train_override is not None:
+        X_train, X_tilde_train, _, mask_train = generate_single_mask_dataset(
+            n_samples=n_train_override,
+            sigma=sigma,
+            d=d,
+            mask_value=mask_value,
+            rng=rng,
+        )
+    else:
+        X_train, X_tilde_train, _, mask_train = generate_single_mask_dataset_from_alpha(
+            alpha=alpha,
+            sigma=sigma,
+            d=d,
+            mask_value=mask_value,
+            rng=rng,
+        )
 
     n_population = int(config["evaluation"]["n_population"])
     X_pop, X_tilde_pop, _, mask_pop = generate_single_mask_dataset(
@@ -411,15 +404,6 @@ def run_experiment(config: dict) -> dict:
         device=device,
     )
 
-    # history = fit(
-    #     model=model,
-    #     X_tilde=X_tilde_train_t,
-    #     X=X_train_t,
-    #     mask_indices=mask_train_t,
-    #     n_steps=int(config["training"]["n_steps"]),
-    #     learning_rate=float(config["training"]["learning_rate"]),
-    #     lambda_reg=float(config["training"]["lambda_reg"]),
-    # )
 
     n_steps = int(config["training"]["n_steps"])
     start_time = time.perf_counter()
@@ -441,18 +425,6 @@ def run_experiment(config: dict) -> dict:
     empirical_bayes_risk = bayes_population_risk_empirical(X_pop, sigma, mask_pop)
 
     W = model.W.detach().cpu().numpy()
-    # metrics, S, eigenvalues = compute_run_metrics(
-    #     W=W,
-    #     sigma=sigma,
-    #     train_loss=train_loss,
-    #     population_risk=population_risk,
-    #     bayes_population_risk=bayes_population_risk,
-    #     empirical_bayes_risk=empirical_bayes_risk,
-    #     alpha=alpha,
-    #     seed=seed,
-    #     n_train=X_train.shape[0],
-    #     n_population=n_population,
-    # )
     metrics, S, eigenvalues = compute_run_metrics(
         W=W,
         sigma=sigma,
@@ -460,7 +432,7 @@ def run_experiment(config: dict) -> dict:
         population_risk=population_risk,
         bayes_population_risk=bayes_population_risk,
         empirical_bayes_risk=empirical_bayes_risk,
-        alpha=alpha,
+        alpha=float(alpha) if n_train_override is None else None,
         seed=seed,
         n_train=X_train.shape[0],
         n_population=n_population,
@@ -485,7 +457,7 @@ def save_experiment_outputs(results: dict, run_dir: Path) -> None:
     """Save all outputs of one run."""
     save_json(results["config"], run_dir / "config.json")
     save_json(results["metrics"], run_dir / "metrics.json")
-    save_json(results["history"], run_dir / "history.json")
+    # save_json(results["history"], run_dir / "history.json")
 
     # disable for now to save disk space!!! temporary!!
     save_run_arrays(
@@ -513,6 +485,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run one SPOC masked-attention experiment.")
     parser.add_argument("--config", type=str, default=None, help="Path to yaml config file.")
     parser.add_argument("--alpha", type=float, default=None, help="Override alpha.")
+    parser.add_argument("--n-train", type=int, default=None, help="Override training set size. If provided, overrides alpha.")
     parser.add_argument("--seed", type=int, default=None, help="Override random seed.")
     parser.add_argument("--save-root", type=str, default=None, help="Override save root directory.")
     parser.add_argument("--run-name", type=str, default=None, help="Override run name.")
@@ -521,17 +494,24 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    """Run one experiment from config."""
     args = parse_args()
     config = load_config(args.config)
     config = apply_overrides(
         config=config,
         alpha=args.alpha,
+        n_train=args.n_train,
         seed=args.seed,
         save_root=args.save_root,
         run_name=args.run_name,
         experiment_number=args.experiment_number,
     )
+
+    if args.save_root is None:
+        if args.config is None:
+            config_name = "default"
+        else:
+            config_name = Path(args.config).stem
+        config["experiment"]["save_root"] = f"results/individual/{config_name}"
 
     run_dir = create_run_dir(config)
     results = run_experiment(config)
