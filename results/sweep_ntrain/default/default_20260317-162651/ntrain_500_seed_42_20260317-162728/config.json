@@ -1,0 +1,33 @@
+{
+  "experiment": {
+    "save_root": "results/sweep_ntrain/default/default_20260317-162651",
+    "run_name": null,
+    "seed": 42
+  },
+  "data": {
+    "T": 4,
+    "d": 50,
+    "covariance_type": "tridiagonal",
+    "rho": 0.3,
+    "length_scale": null,
+    "eta": null,
+    "mask_value": 1.0
+  },
+  "model": {
+    "r": 50,
+    "beta": 1.0,
+    "normalize_sqrt_d": true,
+    "dtype": "float64",
+    "device": "cpu"
+  },
+  "training": {
+    "alpha": 1.0,
+    "n_train": 500,
+    "n_steps": 1000,
+    "learning_rate": 0.001,
+    "lambda_reg": 0.0001
+  },
+  "evaluation": {
+    "n_population": 5000
+  }
+}

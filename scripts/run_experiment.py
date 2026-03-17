@@ -7,6 +7,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -24,17 +26,16 @@ from src.data.generator import generate_single_mask_dataset, generate_single_mas
 from src.evaluation.metrics import attention_matrix, compute_eigenvalues_symmetric, compute_spectral_concentration, compute_trace, compute_weights_norm
 from src.models.attention import TiedSingleHeadAttention
 from src.training.trainer import evaluate_reconstruction_loss, fit
-from src.utils.plots import plot_eigenvalue_histogram, plot_eigenvalues, plot_matrix_heatmap
+from src.utils.plots import plot_eigenvalue_histogram, plot_eigenvalues, plot_matrix_heatmap, plot_training_history
 
 
 def get_default_config() -> dict:
     """Return default experiment config."""
     return {
         "experiment": {
-            "save_root": "results/individual_runs",
+            "save_root": "results/individual",
             "run_name": None,
             "seed": 0,
-            "experiment_number": None,
         },
         "data": {
             "T": 4,
@@ -100,7 +101,6 @@ def apply_overrides(
     seed: int | None,
     save_root: str | None,
     run_name: str | None,
-    experiment_number: int | None = None,
 ) -> dict:
     """Apply command-line overrides to config."""
     updated = copy.deepcopy(config)
@@ -115,41 +115,7 @@ def apply_overrides(
         updated["experiment"]["save_root"] = save_root
     if run_name is not None:
         updated["experiment"]["run_name"] = run_name
-    if experiment_number is not None:
-        updated["experiment"]["experiment_number"] = int(experiment_number)
-
     return updated
-
-
-def get_next_experiment_number(save_root: Path) -> int:
-    """
-    Return the next experiment number based on existing folders named
-    experiment_<number>_...
-    """
-    if not save_root.exists():
-        return 1
-
-    max_number = 0
-    for path in save_root.iterdir():
-        if not path.is_dir():
-            continue
-
-        name = path.name
-        if not name.startswith("experiment_"):
-            continue
-
-        parts = name.split("_")
-        if len(parts) < 3:
-            continue
-
-        try:
-            number = int(parts[1])
-            max_number = max(max_number, number)
-        except ValueError:
-            continue
-
-    return max_number + 1
-
 
 def get_torch_dtype(dtype_name: str) -> torch.dtype:
     """Map dtype name to torch dtype."""
@@ -475,11 +441,10 @@ def save_experiment_outputs(results: dict, run_dir: Path) -> None:
         S=results["S"],
         sigma=results["sigma"],
         eigenvalues=results["eigenvalues"],
+        history = results["history"]
     )
 
     
-
-
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description="Run one SPOC masked-attention experiment.")
@@ -489,7 +454,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=None, help="Override random seed.")
     parser.add_argument("--save-root", type=str, default=None, help="Override save root directory.")
     parser.add_argument("--run-name", type=str, default=None, help="Override run name.")
-    parser.add_argument("--experiment-number", type=int, default=None, help="Override experiment number.")
     return parser.parse_args()
 
 
@@ -503,7 +467,6 @@ def main() -> None:
         seed=args.seed,
         save_root=args.save_root,
         run_name=args.run_name,
-        experiment_number=args.experiment_number,
     )
 
     if args.save_root is None:

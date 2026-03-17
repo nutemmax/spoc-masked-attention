@@ -61,3 +61,23 @@ def plot_matrix_heatmap(
     ax.set_title(title)
     fig.colorbar(im, ax=ax)
     return fig, ax
+
+def plot_training_history(history: dict[str, list[float]], title: str = "Training history"):
+    # plot full convergence history for train loss and objective
+    fig, ax = plt.subplots(figsize=(6, 4))
+
+    train_loss = history.get("train_loss", [])
+    objective = history.get("objective", [])
+
+    if len(train_loss) > 0:
+        ax.plot(train_loss, label="Train loss")
+    if len(objective) > 0:
+        ax.plot(objective, label="Objective")
+
+    ax.set_xlabel("Iteration")
+    ax.set_ylabel("Value")
+    ax.set_title(title)
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+    return fig, ax

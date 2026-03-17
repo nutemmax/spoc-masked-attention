@@ -1,0 +1,8 @@
+{
+  "sweep_type": "ntrain",
+  "config_path": "configs/default.yaml",
+  "config_name": "default",
+  "seed": 42,
+  "ntrain_csv": "10,100,500,1000,2000,5000",
+  "sweep_dir": "results/sweep_ntrain/default/default_20260317-162651"
+}
