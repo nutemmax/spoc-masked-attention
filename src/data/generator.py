@@ -81,18 +81,37 @@ def compute_n_from_alpha(alpha: float, d: int) -> int:
     return int(round(alpha * (d ** 2)))
 
 
-def generate_single_mask_dataset(n_samples: int, sigma: np.ndarray, d: int, mask_value: float = 1.0, rng: np.random.Generator | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def generate_single_mask_dataset(
+    n_samples: int,
+    sigma: np.ndarray,
+    d: int,
+    mask_value: float = 1.0,
+    rng: np.random.Generator | None = None,
+    masking_strategy: str = "random",
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Generate X, X_tilde, Y_target and mask indices for single-token masking."""
     if rng is None:
         rng = np.random.default_rng()
 
     X = generate_gaussian_sequences(n_samples=n_samples, sigma=sigma, d=d, rng=rng)
-    X_tilde, Y_target, mask_indices = build_masked_dataset(X=X, mask_value=mask_value, rng=rng)
+    X_tilde, Y_target, mask_indices = build_masked_dataset(
+        X=X,
+        mask_value=mask_value,
+        rng=rng,
+        masking_strategy=masking_strategy,
+    )
 
     return X, X_tilde, Y_target, mask_indices
 
 
-def generate_single_mask_dataset_from_alpha(alpha: float, sigma: np.ndarray, d: int, mask_value: float = 1.0, rng: np.random.Generator | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def generate_single_mask_dataset_from_alpha(
+    alpha: float,
+    sigma: np.ndarray,
+    d: int,
+    mask_value: float = 1.0,
+    rng: np.random.Generator | None = None,
+    masking_strategy: str = "random",
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Generate a single-token masked dataset from alpha."""
     n_samples = compute_n_from_alpha(alpha=alpha, d=d)
     return generate_single_mask_dataset(
@@ -101,4 +120,5 @@ def generate_single_mask_dataset_from_alpha(alpha: float, sigma: np.ndarray, d: 
         d=d,
         mask_value=mask_value,
         rng=rng,
+        masking_strategy=masking_strategy,
     )

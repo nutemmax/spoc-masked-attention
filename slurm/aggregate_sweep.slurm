@@ -10,7 +10,7 @@
 set -euo pipefail
 
 # ====== CONFIG (edit this only) ======
-SWEEP_ROOT="results/sweep_ntrain/default"
+SWEEP_ROOT="results/sweep_ntrain/"
 # SWEEP_ROOT="results/sweep_alpha/default"
 
 # ====== SETUP ======

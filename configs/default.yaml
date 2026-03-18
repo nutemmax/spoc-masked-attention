@@ -11,6 +11,7 @@ data:
   length_scale: null
   eta: null
   mask_value: 1.0
+  masking_strategy: random
 
 model:
   r: 50
@@ -23,7 +24,7 @@ training:
   alpha: 1.0
   n_steps: 1000
   learning_rate: 0.001
-  lambda_reg: 0.0001
+  lambda_reg: 0.00001
 
 evaluation:
   n_population: 5000

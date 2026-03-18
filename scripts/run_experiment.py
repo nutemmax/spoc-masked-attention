@@ -45,6 +45,7 @@ def get_default_config() -> dict:
             "length_scale": None,
             "eta": None,
             "mask_value": 1.0,
+            "masking_strategy": "last", # or 'random'
         },
         "model": {
             "r": 64,
@@ -173,6 +174,33 @@ def create_run_dir(config: dict) -> Path:
     run_dir.mkdir(parents=True, exist_ok=False)
     return run_dir
 
+def format_float_for_title(x) -> str:
+    if x is None:
+        return "None"
+    if isinstance(x, float):
+        return f"{x:.3g}"
+    return str(x)
+
+
+def build_plot_config_label(config: dict) -> str:
+    data_cfg = config["data"]
+    model_cfg = config["model"]
+    train_cfg = config["training"]
+
+    cov = data_cfg.get("covariance_type")
+    mask = data_cfg.get("masking_strategy", "random")
+    rho = format_float_for_title(data_cfg.get("rho"))
+    lam = format_float_for_title(train_cfg.get("lambda_reg"))
+    beta = format_float_for_title(model_cfg.get("beta"))
+    T = data_cfg.get("T")
+    d = data_cfg.get("d")
+    lr = format_float_for_title(train_cfg.get("learning_rate"))
+
+    return (
+        rf"Cov={cov}, Mask={mask}, "
+        rf"$\rho={rho}$, $\lambda={lam}$, $\beta={beta}$,$T={T}$, $d={d}$, lr={lr}"
+    )
+
 def compute_run_metrics(
     W: np.ndarray,
     sigma: np.ndarray,
@@ -269,25 +297,27 @@ def save_run_arrays(run_dir: Path, W: np.ndarray, S: np.ndarray, sigma: np.ndarr
     np.save(run_dir / "eigenvalues.npy", eigenvalues)
 
 
-def save_run_plots(run_dir: Path, S: np.ndarray, sigma: np.ndarray, eigenvalues: np.ndarray, history: dict[str, list[float]]) -> None:
+def save_run_plots(run_dir: Path, S: np.ndarray, sigma: np.ndarray, eigenvalues: np.ndarray, history: dict[str, list[float]], config : dict) -> None:
     """Save plots for one run."""
-    fig, _ = plot_eigenvalues(eigenvalues, title="Eigenvalues of S")
+    label = build_plot_config_label(config)
+
+    fig, _ = plot_eigenvalues(eigenvalues, title=f"Eigenvalues of S\n{label}")
     fig.savefig(run_dir / "eigenvalues.png", bbox_inches="tight")
     plt.close(fig)
 
-    fig, _ = plot_eigenvalue_histogram(eigenvalues, title="Histogram of eigenvalues of S")
+    fig, _ = plot_eigenvalue_histogram(eigenvalues, title=f"Histogram of eigenvalues of S\n{label}")
     fig.savefig(run_dir / "eigenvalue_histogram.png", bbox_inches="tight")
     plt.close(fig)
 
-    fig, _ = plot_matrix_heatmap(S, title="Learned attention matrix S")
+    fig, _ = plot_matrix_heatmap(S, title=f"Learned attention matrix S\n{label}")
     fig.savefig(run_dir / "S_heatmap.png", bbox_inches="tight")
     plt.close(fig)
 
-    fig, _ = plot_matrix_heatmap(sigma, title="Teacher covariance Sigma")
+    fig, _ = plot_matrix_heatmap(sigma, title=f"Teacher covariance Sigma\n{label}")
     fig.savefig(run_dir / "sigma_heatmap.png", bbox_inches="tight")
     plt.close(fig)
 
-    fig, _ = plot_training_history(history, title="Training convergence")
+    fig, _ = plot_training_history(history, title=f"Training convergence\n{label}")
     fig.savefig(run_dir / "training_convergence.png", bbox_inches="tight")
     plt.close(fig)
 
@@ -303,6 +333,7 @@ def run_experiment(config: dict) -> dict:
     alpha = config["training"].get("alpha")
     n_train_override = config["training"].get("n_train")
     mask_value = float(config["data"]["mask_value"])
+    masking_strategy = str(config["data"].get("masking_strategy", "random"))
     if n_train_override is not None:
         n_train_override = int(n_train_override)
         if n_train_override <= 0:
@@ -331,6 +362,7 @@ def run_experiment(config: dict) -> dict:
             d=d,
             mask_value=mask_value,
             rng=rng,
+            masking_strategy=masking_strategy,
         )
     else:
         X_train, X_tilde_train, _, mask_train = generate_single_mask_dataset_from_alpha(
@@ -339,6 +371,7 @@ def run_experiment(config: dict) -> dict:
             d=d,
             mask_value=mask_value,
             rng=rng,
+            masking_strategy=masking_strategy,
         )
 
     n_population = int(config["evaluation"]["n_population"])
@@ -348,6 +381,7 @@ def run_experiment(config: dict) -> dict:
         d=d,
         mask_value=mask_value,
         rng=rng,
+        masking_strategy=masking_strategy,
     )
 
     dtype = get_torch_dtype(config["model"]["dtype"])
@@ -381,6 +415,10 @@ def run_experiment(config: dict) -> dict:
         n_steps=n_steps,
         learning_rate=float(config["training"]["learning_rate"]),
         lambda_reg=float(config["training"]["lambda_reg"]),
+        X_tilde_eval=X_tilde_pop_t,
+        X_eval=X_pop_t,
+        mask_eval=mask_pop_t,
+        eval_every=25,
     )
     runtime_seconds = time.perf_counter() - start_time
 
@@ -441,7 +479,8 @@ def save_experiment_outputs(results: dict, run_dir: Path) -> None:
         S=results["S"],
         sigma=results["sigma"],
         eigenvalues=results["eigenvalues"],
-        history = results["history"]
+        history=results["history"],
+        config=results["config"],
     )
 
     

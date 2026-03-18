@@ -9,6 +9,42 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
 
+def format_float_for_title(x) -> str:
+    if x is None:
+        return "None"
+    if isinstance(x, float):
+        return f"{x:.3g}"
+    return str(x)
+
+
+def build_sweep_plot_config_label(sweep_dir: Path) -> str:
+    sweep_config_path = sweep_dir / "sweep_config.json"
+    if not sweep_config_path.exists():
+        return ""
+
+    with open(sweep_config_path, "r", encoding="utf-8") as f:
+        sweep_cfg = json.load(f)
+
+    base_config = sweep_cfg.get("base_config", {})
+    data_cfg = base_config.get("data", {})
+    model_cfg = base_config.get("model", {})
+    train_cfg = base_config.get("training", {})
+
+    cov = data_cfg.get("covariance_type")
+    mask = data_cfg.get("masking_strategy", "random")
+    rho = format_float_for_title(data_cfg.get("rho"))
+    lam = format_float_for_title(train_cfg.get("lambda_reg"))
+    beta = format_float_for_title(model_cfg.get("beta"))
+    T = data_cfg.get("T")
+    d = data_cfg.get("d")
+    lr = format_float_for_title(train_cfg.get("learning_rate"))
+
+    return (
+        rf"cov={cov}, mask={mask}"
+        rf"$\rho={rho}$, $\lambda={lam}$, $\beta={beta}$, "
+        rf"$T={T}$, $d={d}$, lr={lr}"
+    )
+
 def extract_datetime_from_run_name(run_name: str) -> str | None:
     parts = run_name.split("_")
     if not parts:
@@ -182,7 +218,13 @@ def write_summary_csv(rows: list[dict], path: Path) -> None:
         writer.writerows(rows)
 
 
-def save_metric_plot(df: pd.DataFrame, x_col: str, y_col: str, output_path: Path) -> None:
+def save_metric_plot(
+    df: pd.DataFrame,
+    x_col: str,
+    y_col: str,
+    output_path: Path,
+    config_label: str = "",
+) -> None:
     if x_col not in df.columns or y_col not in df.columns:
         return
 
@@ -202,15 +244,23 @@ def save_metric_plot(df: pd.DataFrame, x_col: str, y_col: str, output_path: Path
     )
     ax.set_xlabel(x_col)
     ax.set_ylabel(y_col)
-    ax.set_title(f"{y_col} vs {x_col}")
+
+    if config_label:
+        ax.set_title(f"{y_col} vs {x_col}\n{config_label}")
+    else:
+        ax.set_title(f"{y_col} vs {x_col}")
+
     ax.grid(True, alpha=0.3)
 
     fig.tight_layout()
     fig.savefig(output_path, bbox_inches="tight")
     plt.close(fig)
 
-
-def save_train_loss_with_ntrain_plot(df: pd.DataFrame, output_path: Path) -> None:
+def save_train_loss_with_ntrain_plot(
+    df: pd.DataFrame,
+    output_path: Path,
+    config_label: str = "",
+) -> None:
     required_cols = {"alpha", "train_loss", "n_train"}
     if not required_cols.issubset(df.columns):
         return
@@ -247,10 +297,14 @@ def save_train_loss_with_ntrain_plot(df: pd.DataFrame, output_path: Path) -> Non
     labels = [line.get_label() for line in lines]
     ax1.legend(lines, labels)
 
+    if config_label:
+        ax1.set_title(f"Train loss and n_train vs alpha\n{config_label}")
+    else:
+        ax1.set_title("Train loss and n_train vs alpha")
+
     fig.tight_layout()
     fig.savefig(output_path, bbox_inches="tight")
     plt.close(fig)
-
 
 def generate_summary_plots(sweep_dir: Path, sweep_key: str) -> None:
     summary_csv_path = sweep_dir / "summary.csv"
@@ -272,6 +326,8 @@ def generate_summary_plots(sweep_dir: Path, sweep_key: str) -> None:
     plots_dir = sweep_dir / "plots"
     plots_dir.mkdir(parents=True, exist_ok=True)
 
+    config_label = build_sweep_plot_config_label(sweep_dir)
+
     metrics_to_plot = [
         "train_loss",
         "population_risk",
@@ -289,14 +345,15 @@ def generate_summary_plots(sweep_dir: Path, sweep_key: str) -> None:
             x_col=sweep_key,
             y_col=metric,
             output_path=plots_dir / f"{metric}_vs_{sweep_key}.png",
+            config_label=config_label,
         )
 
     if sweep_key == "alpha":
         save_train_loss_with_ntrain_plot(
             df=df,
             output_path=plots_dir / "train_loss_and_ntrain_vs_alpha.png",
+            config_label=config_label,
         )
-
 
 def has_run_subdirs(path: Path) -> bool:
     if not path.is_dir():

@@ -1,0 +1,144 @@
+Submitting n_train sweep for configs/generated_grid_biggerT_maskrandom_1000/cov_toeplitz_maskrandom_rho0p3_lambda1e-05_beta1_d100_T20_lr0p001_iter1000.yaml
+sbatch: [ESTIMATION] The estimated cost of this job is CHF 0.00
+sbatch: ╭──────────────────────────────┬─────────────┬─────────────┬─────────────╮
+sbatch: │ [in CHF]                     │ Capping     │ Consumed    │ Queued ¹⁾ ²⁾│
+sbatch: ├──────────────────────────────┼─────────────┼─────────────┼─────────────┤
+sbatch: │ username : anastass          │ 0           │ 0.0         │ 0.0         │
+sbatch: ├──────────────────────────────┼─────────────┼─────────────┼─────────────┤
+sbatch: │ account : master             │ 10,000      │ 0.0         │ 331.75      │
+sbatch: ╰──────────────────────────────┴─────────────┴─────────────┴─────────────╯
+sbatch: ¹⁾ Estimated cost of the queued jobs and this job
+sbatch: ²⁾ Queued jobs costs are based on its walltime (option --time)
+Submitted batch job 52494556
+Submitting n_train sweep for configs/generated_grid_biggerT_maskrandom_1000/cov_toeplitz_maskrandom_rho0p3_lambda1e-05_beta1_d100_T5_lr0p001_iter1000.yaml
+sbatch: [ESTIMATION] The estimated cost of this job is CHF 0.00
+sbatch: ╭──────────────────────────────┬─────────────┬─────────────┬─────────────╮
+sbatch: │ [in CHF]                     │ Capping     │ Consumed    │ Queued ¹⁾ ²⁾│
+sbatch: ├──────────────────────────────┼─────────────┼─────────────┼─────────────┤
+sbatch: │ username : anastass          │ 0           │ 0.0         │ 0.0         │
+sbatch: ├──────────────────────────────┼─────────────┼─────────────┼─────────────┤
+sbatch: │ account : master             │ 10,000      │ 0.0         │ 331.75      │
+sbatch: ╰──────────────────────────────┴─────────────┴─────────────┴─────────────╯
+sbatch: ¹⁾ Estimated cost of the queued jobs and this job
+sbatch: ²⁾ Queued jobs costs are based on its walltime (option --time)
+Submitted batch job 52494557
+Submitting n_train sweep for configs/generated_grid_biggerT_maskrandom_1000/cov_toeplitz_maskrandom_rho0p3_lambda1e-05_beta1_d50_T10_lr0p001_iter1000.yaml
+sbatch: [ESTIMATION] The estimated cost of this job is CHF 0.00
+sbatch: ╭──────────────────────────────┬─────────────┬─────────────┬─────────────╮
+sbatch: │ [in CHF]                     │ Capping     │ Consumed    │ Queued ¹⁾ ²⁾│
+sbatch: ├──────────────────────────────┼─────────────┼─────────────┼─────────────┤
+sbatch: │ username : anastass          │ 0           │ 0.0         │ 0.0         │
+sbatch: ├──────────────────────────────┼─────────────┼─────────────┼─────────────┤
+sbatch: │ account : master             │ 10,000      │ 0.0         │ 331.75      │
+sbatch: ╰──────────────────────────────┴─────────────┴─────────────┴─────────────╯
+sbatch: ¹⁾ Estimated cost of the queued jobs and this job
+sbatch: ²⁾ Queued jobs costs are based on its walltime (option --time)
+Submitted batch job 52494558
+Submitting n_train sweep for configs/generated_grid_biggerT_maskrandom_1000/cov_toeplitz_maskrandom_rho0p5_lambda1e-05_beta1_d100_T10_lr0p001_iter1000.yaml
+sbatch: [ESTIMATION] The estimated cost of this job is CHF 0.00
+sbatch: ╭──────────────────────────────┬─────────────┬─────────────┬─────────────╮
+sbatch: │ [in CHF]                     │ Capping     │ Consumed    │ Queued ¹⁾ ²⁾│
+sbatch: ├──────────────────────────────┼─────────────┼─────────────┼─────────────┤
+sbatch: │ username : anastass          │ 0           │ 0.0         │ 0.0         │
+sbatch: ├──────────────────────────────┼─────────────┼─────────────┼─────────────┤
+sbatch: │ account : master             │ 10,000      │ 0.0         │ 331.75      │
+sbatch: ╰──────────────────────────────┴─────────────┴─────────────┴─────────────╯
+sbatch: ¹⁾ Estimated cost of the queued jobs and this job
+sbatch: ²⁾ Queued jobs costs are based on its walltime (option --time)
+Submitted batch job 52494559
+Submitting n_train sweep for configs/generated_grid_biggerT_maskrandom_1000/cov_toeplitz_maskrandom_rho0p5_lambda1e-05_beta1_d50_T20_lr0p001_iter1000.yaml
+sbatch: [ESTIMATION] The estimated cost of this job is CHF 0.00
+sbatch: ╭──────────────────────────────┬─────────────┬─────────────┬─────────────╮
+sbatch: │ [in CHF]                     │ Capping     │ Consumed    │ Queued ¹⁾ ²⁾│
+sbatch: ├──────────────────────────────┼─────────────┼─────────────┼─────────────┤
+sbatch: │ username : anastass          │ 0           │ 0.0         │ 0.0         │
+sbatch: ├──────────────────────────────┼─────────────┼─────────────┼─────────────┤
+sbatch: │ account : master             │ 10,000      │ 0.0         │ 331.75      │
+sbatch: ╰──────────────────────────────┴─────────────┴─────────────┴─────────────╯
+sbatch: ¹⁾ Estimated cost of the queued jobs and this job
+sbatch: ²⁾ Queued jobs costs are based on its walltime (option --time)
+Submitted batch job 52494560
+Submitting n_train sweep for configs/generated_grid_biggerT_maskrandom_1000/cov_toeplitz_maskrandom_rho0p5_lambda1e-05_beta1_d50_T5_lr0p001_iter1000.yaml
+sbatch: [ESTIMATION] The estimated cost of this job is CHF 0.00
+sbatch: ╭──────────────────────────────┬─────────────┬─────────────┬─────────────╮
+sbatch: │ [in CHF]                     │ Capping     │ Consumed    │ Queued ¹⁾ ²⁾│
+sbatch: ├──────────────────────────────┼─────────────┼─────────────┼─────────────┤
+sbatch: │ username : anastass          │ 0           │ 0.0         │ 0.0         │
+sbatch: ├──────────────────────────────┼─────────────┼─────────────┼─────────────┤
+sbatch: │ account : master             │ 10,000      │ 0.0         │ 331.75      │
+sbatch: ╰──────────────────────────────┴─────────────┴─────────────┴─────────────╯
+sbatch: ¹⁾ Estimated cost of the queued jobs and this job
+sbatch: ²⁾ Queued jobs costs are based on its walltime (option --time)
+Submitted batch job 52494561
+Submitting n_train sweep for configs/generated_grid_biggerT_maskrandom_1000/cov_toeplitz_maskrandom_rho0p8_lambda1e-05_beta1_d100_T20_lr0p001_iter1000.yaml
+sbatch: [ESTIMATION] The estimated cost of this job is CHF 0.00
+sbatch: ╭──────────────────────────────┬─────────────┬─────────────┬─────────────╮
+sbatch: │ [in CHF]                     │ Capping     │ Consumed    │ Queued ¹⁾ ²⁾│
+sbatch: ├──────────────────────────────┼─────────────┼─────────────┼─────────────┤
+sbatch: │ username : anastass          │ 0           │ 0.0         │ 0.0         │
+sbatch: ├──────────────────────────────┼─────────────┼─────────────┼─────────────┤
+sbatch: │ account : master             │ 10,000      │ 0.0         │ 331.75      │
+sbatch: ╰──────────────────────────────┴─────────────┴─────────────┴─────────────╯
+sbatch: ¹⁾ Estimated cost of the queued jobs and this job
+sbatch: ²⁾ Queued jobs costs are based on its walltime (option --time)
+Submitted batch job 52494562
+Submitting n_train sweep for configs/generated_grid_biggerT_maskrandom_1000/cov_toeplitz_maskrandom_rho0p8_lambda1e-05_beta1_d100_T5_lr0p001_iter1000.yaml
+sbatch: [ESTIMATION] The estimated cost of this job is CHF 0.00
+sbatch: ╭──────────────────────────────┬─────────────┬─────────────┬─────────────╮
+sbatch: │ [in CHF]                     │ Capping     │ Consumed    │ Queued ¹⁾ ²⁾│
+sbatch: ├──────────────────────────────┼─────────────┼─────────────┼─────────────┤
+sbatch: │ username : anastass          │ 0           │ 0.0         │ 0.0         │
+sbatch: ├──────────────────────────────┼─────────────┼─────────────┼─────────────┤
+sbatch: │ account : master             │ 10,000      │ 0.0         │ 331.75      │
+sbatch: ╰──────────────────────────────┴─────────────┴─────────────┴─────────────╯
+sbatch: ¹⁾ Estimated cost of the queued jobs and this job
+sbatch: ²⁾ Queued jobs costs are based on its walltime (option --time)
+Submitted batch job 52494563
+Submitting n_train sweep for configs/generated_grid_biggerT_maskrandom_1000/cov_toeplitz_maskrandom_rho0p8_lambda1e-05_beta1_d50_T10_lr0p001_iter1000.yaml
+sbatch: [ESTIMATION] The estimated cost of this job is CHF 0.00
+sbatch: ╭──────────────────────────────┬─────────────┬─────────────┬─────────────╮
+sbatch: │ [in CHF]                     │ Capping     │ Consumed    │ Queued ¹⁾ ²⁾│
+sbatch: ├──────────────────────────────┼─────────────┼─────────────┼─────────────┤
+sbatch: │ username : anastass          │ 0           │ 0.0         │ 0.0         │
+sbatch: ├──────────────────────────────┼─────────────┼─────────────┼─────────────┤
+sbatch: │ account : master             │ 10,000      │ 0.0         │ 331.75      │
+sbatch: ╰──────────────────────────────┴─────────────┴─────────────┴─────────────╯
+sbatch: ¹⁾ Estimated cost of the queued jobs and this job
+sbatch: ²⁾ Queued jobs costs are based on its walltime (option --time)
+Submitted batch job 52494564
+Submitting n_train sweep for configs/generated_grid_biggerT_maskrandom_1000/cov_tridiagonal_maskrandom_rho0p3_lambda1e-05_beta1_d100_T10_lr0p001_iter1000.yaml
+sbatch: [ESTIMATION] The estimated cost of this job is CHF 0.00
+sbatch: ╭──────────────────────────────┬─────────────┬─────────────┬─────────────╮
+sbatch: │ [in CHF]                     │ Capping     │ Consumed    │ Queued ¹⁾ ²⁾│
+sbatch: ├──────────────────────────────┼─────────────┼─────────────┼─────────────┤
+sbatch: │ username : anastass          │ 0           │ 0.0         │ 0.0         │
+sbatch: ├──────────────────────────────┼─────────────┼─────────────┼─────────────┤
+sbatch: │ account : master             │ 10,000      │ 0.0         │ 331.75      │
+sbatch: ╰──────────────────────────────┴─────────────┴─────────────┴─────────────╯
+sbatch: ¹⁾ Estimated cost of the queued jobs and this job
+sbatch: ²⁾ Queued jobs costs are based on its walltime (option --time)
+Submitted batch job 52494565
+Submitting n_train sweep for configs/generated_grid_biggerT_maskrandom_1000/cov_tridiagonal_maskrandom_rho0p3_lambda1e-05_beta1_d50_T20_lr0p001_iter1000.yaml
+sbatch: [ESTIMATION] The estimated cost of this job is CHF 0.00
+sbatch: ╭──────────────────────────────┬─────────────┬─────────────┬─────────────╮
+sbatch: │ [in CHF]                     │ Capping     │ Consumed    │ Queued ¹⁾ ²⁾│
+sbatch: ├──────────────────────────────┼─────────────┼─────────────┼─────────────┤
+sbatch: │ username : anastass          │ 0           │ 0.0         │ 0.0         │
+sbatch: ├──────────────────────────────┼─────────────┼─────────────┼─────────────┤
+sbatch: │ account : master             │ 10,000      │ 0.0         │ 331.75      │
+sbatch: ╰──────────────────────────────┴─────────────┴─────────────┴─────────────╯
+sbatch: ¹⁾ Estimated cost of the queued jobs and this job
+sbatch: ²⁾ Queued jobs costs are based on its walltime (option --time)
+Submitted batch job 52494566
+Submitting n_train sweep for configs/generated_grid_biggerT_maskrandom_1000/cov_tridiagonal_maskrandom_rho0p3_lambda1e-05_beta1_d50_T5_lr0p001_iter1000.yaml
+sbatch: [ESTIMATION] The estimated cost of this job is CHF 0.00
+sbatch: ╭──────────────────────────────┬─────────────┬─────────────┬─────────────╮
+sbatch: │ [in CHF]                     │ Capping     │ Consumed    │ Queued ¹⁾ ²⁾│
+sbatch: ├──────────────────────────────┼─────────────┼─────────────┼─────────────┤
+sbatch: │ username : anastass          │ 0           │ 0.0         │ 0.0         │
+sbatch: ├──────────────────────────────┼─────────────┼─────────────┼─────────────┤
+sbatch: │ account : master             │ 10,000      │ 0.0         │ 331.75      │
+sbatch: ╰──────────────────────────────┴─────────────┴─────────────┴─────────────╯
+sbatch: ¹⁾ Estimated cost of the queued jobs and this job
+sbatch: ²⁾ Queued jobs costs are based on its walltime (option --time)
+Submitted batch job 52494567

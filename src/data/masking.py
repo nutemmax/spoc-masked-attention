@@ -55,19 +55,47 @@ def apply_single_token_mask(
 
     return X_tilde, Y_target
 
+def sample_single_last_mask_indices(
+    n_samples: int,
+    T: int,
+) -> np.ndarray:
+    """Always mask the last token."""
+    if n_samples <= 0 or T <= 0:
+        raise ValueError("n_samples and T must be positive.")
+
+    return np.full(shape=(n_samples,), fill_value=T - 1, dtype=int)
+
 
 def build_masked_dataset(
     X: np.ndarray,
     mask_value: float = 1.0,
     rng: np.random.Generator | None = None,
+    masking_strategy: str = "random",
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Full single-token masking pipeline for a batch of sequences X."""
     if X.ndim != 3:
         raise ValueError("X must have shape (n_samples, T, d).")
 
     n_samples, T, _ = X.shape
-    mask_indices = sample_single_random_mask_indices(n_samples=n_samples, T=T, rng=rng)
-    X_tilde, Y_target = apply_single_token_mask(X=X, mask_indices=mask_indices, mask_value=mask_value)
+
+    if masking_strategy == "random":
+        mask_indices = sample_single_random_mask_indices(
+            n_samples=n_samples, T=T, rng=rng
+        )
+    elif masking_strategy == "last":
+        mask_indices = sample_single_last_mask_indices(
+            n_samples=n_samples, T=T
+        )
+    else:
+        raise ValueError(
+            f"Unknown masking_strategy='{masking_strategy}'. Use 'random' or 'last'."
+        )
+
+    X_tilde, Y_target = apply_single_token_mask(
+        X=X,
+        mask_indices=mask_indices,
+        mask_value=mask_value,
+    )
 
     return X_tilde, Y_target, mask_indices
 
@@ -131,7 +159,6 @@ def sample_multi_random_mask_matrix(
         mask_matrix[i, masked_positions] = True
 
     return mask_matrix
-
 
 def apply_multi_token_mask(
     X: np.ndarray,
