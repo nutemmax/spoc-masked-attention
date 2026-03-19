@@ -6,7 +6,7 @@ import yaml
 import copy
 
 iters = 10000
-masking_str = "last"
+masking_str = "random"
 OUTPUT_DIR = Path(f"configs/generated_grid_biggerT_mask{masking_str}_{iters}")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -51,18 +51,18 @@ def build_config_name(
 
 
 def keep_chessboard(index_tuple: tuple[int, ...]) -> bool:
-    return sum(index_tuple) % 2 == 0
+    return sum(index_tuple) % 1 == 0
 
 
 def main() -> None:
     base_config = load_base_config(BASE_CONFIG_PATH)
 
-    covariance_types = ["tridiagonal", "toeplitz"]
-    rhos = [0.3, 0.5, 0.8]
-    lambda_regs = [1e-5]
+    covariance_types = ["tridiagonal"]
+    rhos = [0.3]
+    lambda_regs = [1e-2, 1e-3]
     betas = [1.0]
-    ds = [50, 100]
-    Ts = [5, 10, 20]
+    ds = [50]
+    Ts = [5]
     learning_rates = [1e-3]
     n_steps_list = [iters]
     masking_strategies = [f"{masking_str}"]   # or ["random", "last"]

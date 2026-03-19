@@ -26,8 +26,10 @@ from src.data.generator import generate_single_mask_dataset, generate_single_mas
 from src.evaluation.metrics import attention_matrix, compute_eigenvalues_symmetric, compute_spectral_concentration, compute_trace, compute_weights_norm
 from src.models.attention import TiedSingleHeadAttention
 from src.training.trainer import evaluate_reconstruction_loss, fit
-from src.utils.plots import plot_eigenvalue_histogram, plot_eigenvalues, plot_matrix_heatmap, plot_training_history
-
+import src.utils.plots as plots
+from src.utils.plots import *
+print("Using plots from:", plots.__file__)
+print("Has build_config_suffix:", hasattr(plots, "build_config_suffix"))
 
 def get_default_config() -> dict:
     """Return default experiment config."""
@@ -174,32 +176,6 @@ def create_run_dir(config: dict) -> Path:
     run_dir.mkdir(parents=True, exist_ok=False)
     return run_dir
 
-def format_float_for_title(x) -> str:
-    if x is None:
-        return "None"
-    if isinstance(x, float):
-        return f"{x:.3g}"
-    return str(x)
-
-
-def build_plot_config_label(config: dict) -> str:
-    data_cfg = config["data"]
-    model_cfg = config["model"]
-    train_cfg = config["training"]
-
-    cov = data_cfg.get("covariance_type")
-    mask = data_cfg.get("masking_strategy", "random")
-    rho = format_float_for_title(data_cfg.get("rho"))
-    lam = format_float_for_title(train_cfg.get("lambda_reg"))
-    beta = format_float_for_title(model_cfg.get("beta"))
-    T = data_cfg.get("T")
-    d = data_cfg.get("d")
-    lr = format_float_for_title(train_cfg.get("learning_rate"))
-
-    return (
-        rf"Cov={cov}, Mask={mask}, "
-        rf"$\rho={rho}$, $\lambda={lam}$, $\beta={beta}$,$T={T}$, $d={d}$, lr={lr}"
-    )
 
 def compute_run_metrics(
     W: np.ndarray,
@@ -215,6 +191,7 @@ def compute_run_metrics(
     history: dict[str, list[float]],
     runtime_seconds: float,
     n_steps: int,
+    config_suffix: str,
 ) -> tuple[dict, np.ndarray, np.ndarray]:
     """Compute scalar, convergence, runtime, and spectral metrics for one run."""
     S = attention_matrix(W)
@@ -279,6 +256,9 @@ def compute_run_metrics(
         "top_eigenvalue": float(top_eigenvalue),
         "min_eigenvalue": float(min_eigenvalue),
         "R1": float(R1),
+
+        # config name
+        "config_suffix": config_suffix,
     }
 
     return metrics, S, eigenvalues
@@ -289,36 +269,37 @@ def save_json(data: dict, path: Path) -> None:
         json.dump(data, f, indent=2)
 
 
-def save_run_arrays(run_dir: Path, W: np.ndarray, S: np.ndarray, sigma: np.ndarray, eigenvalues: np.ndarray) -> None:
+def save_run_arrays(run_dir: Path, W: np.ndarray, S: np.ndarray, sigma: np.ndarray, eigenvalues: np.ndarray, config_suffix: str) -> None:
     """Save numpy arrays for one run."""
-    np.save(run_dir / "W.npy", W)
-    np.save(run_dir / "S.npy", S)
-    np.save(run_dir / "sigma.npy", sigma)
-    np.save(run_dir / "eigenvalues.npy", eigenvalues)
+    np.save(run_dir / f"W__{config_suffix}.npy", W)
+    np.save(run_dir / f"S__{config_suffix}.npy", S)
+    np.save(run_dir / f"sigma__{config_suffix}.npy", sigma)
+    np.save(run_dir / f"eigenvalues__{config_suffix}.npy", eigenvalues)
 
 
-def save_run_plots(run_dir: Path, S: np.ndarray, sigma: np.ndarray, eigenvalues: np.ndarray, history: dict[str, list[float]], config : dict) -> None:
+def save_run_plots(run_dir: Path, S: np.ndarray, sigma: np.ndarray, eigenvalues: np.ndarray, history: dict[str, list[float]], config: dict, actual_n_train: int) -> None:
     """Save plots for one run."""
-    label = build_plot_config_label(config)
+    label = build_plot_config_label(config, actual_n_train=actual_n_train)
+    suffix = build_config_suffix(config, actual_n_train=actual_n_train)
 
-    fig, _ = plot_eigenvalues(eigenvalues, title=f"Eigenvalues of S\n{label}")
-    fig.savefig(run_dir / "eigenvalues.png", bbox_inches="tight")
+    fig, _ = plot_eigenvalues(eigenvalues, title=f"Eigenvalues of learned matrix $S$\n{label}")
+    fig.savefig(run_dir / f"eigenvalues.png", bbox_inches="tight")
     plt.close(fig)
 
-    fig, _ = plot_eigenvalue_histogram(eigenvalues, title=f"Histogram of eigenvalues of S\n{label}")
-    fig.savefig(run_dir / "eigenvalue_histogram.png", bbox_inches="tight")
+    fig, _ = plot_eigenvalue_histogram(eigenvalues, title=f"Histogram of eigenvalues of learned matrix $S$\n{label}")
+    fig.savefig(run_dir / f"eigenvalue_histogram.png", bbox_inches="tight")
     plt.close(fig)
 
-    fig, _ = plot_matrix_heatmap(S, title=f"Learned attention matrix S\n{label}")
-    fig.savefig(run_dir / "S_heatmap.png", bbox_inches="tight")
+    fig, _ = plot_matrix_heatmap(S, title=f"Heatmap of learned matrix $S$\n{label}")
+    fig.savefig(run_dir / f"S_heatmap.png", bbox_inches="tight")
     plt.close(fig)
 
-    fig, _ = plot_matrix_heatmap(sigma, title=f"Teacher covariance Sigma\n{label}")
-    fig.savefig(run_dir / "sigma_heatmap.png", bbox_inches="tight")
+    fig, _ = plot_matrix_heatmap(sigma, title=f"Heatmap of teacher covariance $\\Sigma$\n{label}")
+    fig.savefig(run_dir / f"sigma_heatmap.png", bbox_inches="tight")
     plt.close(fig)
 
     fig, _ = plot_training_history(history, title=f"Training convergence\n{label}")
-    fig.savefig(run_dir / "training_convergence.png", bbox_inches="tight")
+    fig.savefig(run_dir / f"training_convergence.png", bbox_inches="tight")
     plt.close(fig)
 
 
@@ -429,6 +410,9 @@ def run_experiment(config: dict) -> dict:
     empirical_bayes_risk = bayes_population_risk_empirical(X_pop, sigma, mask_pop)
 
     W = model.W.detach().cpu().numpy()
+    actual_n_train = int(X_train.shape[0])
+    config_suffix = build_config_suffix(config, actual_n_train=actual_n_train)
+
     metrics, S, eigenvalues = compute_run_metrics(
         W=W,
         sigma=sigma,
@@ -438,11 +422,12 @@ def run_experiment(config: dict) -> dict:
         empirical_bayes_risk=empirical_bayes_risk,
         alpha=float(alpha) if n_train_override is None else None,
         seed=seed,
-        n_train=X_train.shape[0],
+        n_train=actual_n_train,
         n_population=n_population,
         history=history,
         runtime_seconds=runtime_seconds,
         n_steps=n_steps,
+        config_suffix=config_suffix,
     )
 
     return {
@@ -454,14 +439,18 @@ def run_experiment(config: dict) -> dict:
         "sigma": sigma,
         "eigenvalues": eigenvalues,
         "model_state_dict": model.state_dict(),
+        "actual_n_train": actual_n_train,
+        "config_suffix": config_suffix,
     }
 
 
 def save_experiment_outputs(results: dict, run_dir: Path) -> None:
     """Save all outputs of one run."""
-    save_json(results["config"], run_dir / "config.json")
-    save_json(results["metrics"], run_dir / "metrics.json")
-    # save_json(results["history"], run_dir / "history.json")
+    suffix = results["config_suffix"]
+    actual_n_train = results["actual_n_train"]
+    save_json(results["config"], run_dir / f"config__{suffix}.json")
+    save_json(results["metrics"], run_dir / f"metrics__{suffix}.json")
+    # save_json(results["history"], run_dir / f"history__{suffix}.json")
 
     # disable for now to save disk space!!! temporary!!
     save_run_arrays(
@@ -470,9 +459,10 @@ def save_experiment_outputs(results: dict, run_dir: Path) -> None:
         S=results["S"],
         sigma=results["sigma"],
         eigenvalues=results["eigenvalues"],
+        config_suffix=suffix,
     )
     
-    torch.save(results["model_state_dict"], run_dir / "model_state.pt")
+    torch.save(results["model_state_dict"], run_dir / f"model_state__{suffix}.pt")
 
     save_run_plots(
         run_dir=run_dir,
@@ -481,6 +471,7 @@ def save_experiment_outputs(results: dict, run_dir: Path) -> None:
         eigenvalues=results["eigenvalues"],
         history=results["history"],
         config=results["config"],
+        actual_n_train=actual_n_train,
     )
 
     
