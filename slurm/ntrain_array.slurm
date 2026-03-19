@@ -16,7 +16,7 @@ set -euo pipefail
 
 # CONFIG_PATH=$1
 # comment out
-CONFIG_PATH="/home/anastass/spoc-masked-attention/configs/generated_grid_biggerT_maskrandom_1000/cov_tridiagonal_maskrandom_rho0p3_lambda1e-05_beta1_d50_T5_lr0p001_iter1000.yaml"
+CONFIG_PATH="/home/anastass/spoc-masked-attention/configs/generated_grid_biggerT_maskrandom_1000/cov_tridiagonal_maskrandom_rho0p5_lambda1e-05_beta1_d50_T5_lr0p001_iter1000.yaml"
 
 ITERS=$(python - <<EOF
 import yaml

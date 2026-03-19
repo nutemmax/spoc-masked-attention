@@ -5,7 +5,7 @@ from pathlib import Path
 import yaml
 import copy
 
-iters = 10000
+iters = 1000
 masking_str = "random"
 OUTPUT_DIR = Path(f"configs/generated_grid_biggerT_mask{masking_str}_{iters}")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -58,8 +58,8 @@ def main() -> None:
     base_config = load_base_config(BASE_CONFIG_PATH)
 
     covariance_types = ["tridiagonal"]
-    rhos = [0.3]
-    lambda_regs = [1e-2, 1e-3]
+    rhos = [0.5]
+    lambda_regs = [1e-5]
     betas = [1.0]
     ds = [50]
     Ts = [5]
@@ -112,7 +112,7 @@ def main() -> None:
             rho = None
 
         # tridiagonal requires rho < 0.5 for PD
-        if covariance_type == "tridiagonal" and rho is not None and rho >= 0.5:
+        if covariance_type == "tridiagonal" and rho is not None and rho > 0.5:
             continue
 
         config = copy.deepcopy(base_config)
