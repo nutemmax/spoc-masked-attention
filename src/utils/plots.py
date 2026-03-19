@@ -67,7 +67,7 @@ def plot_matrix_heatmap(matrix: np.ndarray, title: str) -> tuple[Figure, Axes]:
     return fig, ax
 
 
-def plot_training_history(history: dict[str, list[float]], title: str = "Training history") -> tuple[Figure, Axes]:
+def plot_training_history(history: dict[str, list[float]], title: str = "Training history", bayes_population_risk: float | None = None) -> tuple[Figure, Axes]:
     """Plot training convergence history."""
     fig, ax = plt.subplots(figsize=(11, 7.5))
 
@@ -82,7 +82,9 @@ def plot_training_history(history: dict[str, list[float]], title: str = "Trainin
         ax.plot(range(1, len(objective) + 1), objective, label="Objective", linewidth=2)
     if len(test_loss) > 0 and len(eval_steps) == len(test_loss):
         ax.plot(eval_steps, test_loss, label="Test loss", linewidth=2)
-
+    if bayes_population_risk is not None:
+        ax.axhline(y=bayes_population_risk,linestyle="--",linewidth=2,color="gold",label="Bayes optimal risk")
+    
     ax.set_xlabel("Iteration")
     ax.set_ylabel("Value")
     set_multiline_title(ax, title)

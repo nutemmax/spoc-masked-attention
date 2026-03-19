@@ -117,6 +117,19 @@ def bayes_population_risk_uniform_mask(sigma: np.ndarray) -> float:
     risks = [bayes_conditional_variance(sigma, a) for a in range(T)]
     return float(np.mean(risks))
 
+def bayes_population_risk_fixed_mask(sigma: np.ndarray, masked_index: int) -> float:
+    """
+    Computes the Bayes population risk when the same token index is always masked.
+    """
+    return bayes_conditional_variance(sigma, masked_index)
+
+
+def bayes_population_risk_last_mask(sigma: np.ndarray) -> float:
+    """
+    Computes the Bayes population risk when the last token is always masked.
+    """
+    return bayes_population_risk_fixed_mask(sigma, masked_index=sigma.shape[0] - 1)
+
 
 def masked_mse_per_coordinate(
     X: np.ndarray,

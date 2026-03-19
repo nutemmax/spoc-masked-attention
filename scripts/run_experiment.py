@@ -20,7 +20,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.baselines.bayes import bayes_population_risk_empirical, bayes_population_risk_uniform_mask
+from src.baselines.bayes import bayes_population_risk_empirical, bayes_population_risk_uniform_mask, bayes_population_risk_last_mask
 from src.data.covariance import build_covariance, is_positive_definite
 from src.data.generator import generate_single_mask_dataset, generate_single_mask_dataset_from_alpha
 from src.evaluation.metrics import attention_matrix, compute_eigenvalues_symmetric, compute_spectral_concentration, compute_trace, compute_weights_norm
@@ -277,29 +277,35 @@ def save_run_arrays(run_dir: Path, W: np.ndarray, S: np.ndarray, sigma: np.ndarr
     np.save(run_dir / f"eigenvalues__{config_suffix}.npy", eigenvalues)
 
 
-def save_run_plots(run_dir: Path, S: np.ndarray, sigma: np.ndarray, eigenvalues: np.ndarray, history: dict[str, list[float]], config: dict, actual_n_train: int) -> None:
+def save_run_plots(run_dir: Path, S: np.ndarray, sigma: np.ndarray, eigenvalues: np.ndarray, history: dict[str, list[float]], config: dict, actual_n_train: int, bayes_population_risk: float | None = None) -> None:
     """Save plots for one run."""
     label = build_plot_config_label(config, actual_n_train=actual_n_train)
     suffix = build_config_suffix(config, actual_n_train=actual_n_train)
 
     fig, _ = plot_eigenvalues(eigenvalues, title=f"Eigenvalues of learned matrix $S$\n{label}")
-    fig.savefig(run_dir / f"eigenvalues.png", bbox_inches="tight")
+    fig.savefig(run_dir / f"eigenvalues__{suffix}.png", bbox_inches="tight")
     plt.close(fig)
 
     fig, _ = plot_eigenvalue_histogram(eigenvalues, title=f"Histogram of eigenvalues of learned matrix $S$\n{label}")
-    fig.savefig(run_dir / f"eigenvalue_histogram.png", bbox_inches="tight")
+    fig.savefig(run_dir / f"eigenvalue_histogram__{suffix}.png", bbox_inches="tight")
     plt.close(fig)
 
     fig, _ = plot_matrix_heatmap(S, title=f"Heatmap of learned matrix $S$\n{label}")
-    fig.savefig(run_dir / f"S_heatmap.png", bbox_inches="tight")
+    fig.savefig(run_dir / f"S_heatmap__{suffix}.png", bbox_inches="tight")
     plt.close(fig)
 
     fig, _ = plot_matrix_heatmap(sigma, title=f"Heatmap of teacher covariance $\\Sigma$\n{label}")
-    fig.savefig(run_dir / f"sigma_heatmap.png", bbox_inches="tight")
+    fig.savefig(run_dir / f"sigma_heatmap__{suffix}.png", bbox_inches="tight")
     plt.close(fig)
 
-    fig, _ = plot_training_history(history, title=f"Training convergence\n{label}")
-    fig.savefig(run_dir / f"training_convergence.png", bbox_inches="tight")
+    # training history with bayes optimal
+    fig, _ = plot_training_history(history, title=f"Training convergence\n{label}", bayes_population_risk=bayes_population_risk)
+    fig.savefig(run_dir / f"training_convergence_withBO__{suffix}.png", bbox_inches="tight")
+    plt.close(fig)
+
+    # without bayes optimal
+    fig, _ = plot_training_history(history, title=f"Training convergence\n{label}", bayes_population_risk=None)
+    fig.savefig(run_dir / f"training_convergence__{suffix}.png", bbox_inches="tight")
     plt.close(fig)
 
 
@@ -406,7 +412,12 @@ def run_experiment(config: dict) -> dict:
     train_loss = evaluate_reconstruction_loss(model, X_tilde_train_t, X_train_t, mask_train_t)
     population_risk = evaluate_reconstruction_loss(model, X_tilde_pop_t, X_pop_t, mask_pop_t)
 
-    bayes_population_risk = bayes_population_risk_uniform_mask(sigma)
+    if masking_strategy == "random":
+        bayes_population_risk = bayes_population_risk_uniform_mask(sigma)
+    elif masking_strategy == "last":
+        bayes_population_risk = bayes_population_risk_last_mask(sigma)
+    else:
+        raise ValueError(f"Unsupported masking_strategy='{masking_strategy}'. Expected 'random' or 'last'.")
     empirical_bayes_risk = bayes_population_risk_empirical(X_pop, sigma, mask_pop)
 
     W = model.W.detach().cpu().numpy()
@@ -472,6 +483,7 @@ def save_experiment_outputs(results: dict, run_dir: Path) -> None:
         history=results["history"],
         config=results["config"],
         actual_n_train=actual_n_train,
+        bayes_population_risk = results["metrics"]["bayes_population_risk"],
     )
 
     
