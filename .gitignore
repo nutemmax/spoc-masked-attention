@@ -19,8 +19,9 @@ logs/
 # Jupyter
 .ipynb_checkpoints/
 
-# overleaf
-overleaf/
+# results!!!
+results/
+
 
 # OS files
 .DS_Store
