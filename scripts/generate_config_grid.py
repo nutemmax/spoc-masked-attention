@@ -7,7 +7,7 @@ import copy
 
 iters = 1000
 masking_str = "random"
-OUTPUT_DIR = Path(f"configs/generated_grid_biggerT_mask{masking_str}_{iters}")
+OUTPUT_DIR = Path(f"configs/generated_grid_mask{masking_str}_{iters}")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 BASE_CONFIG_PATH = Path("configs/default.yaml")
@@ -57,8 +57,8 @@ def keep_chessboard(index_tuple: tuple[int, ...]) -> bool:
 def main() -> None:
     base_config = load_base_config(BASE_CONFIG_PATH)
 
-    covariance_types = ["tridiagonal"]
-    rhos = [0.5]
+    covariance_types = ["toeplitz"]
+    rhos = [0.9]
     lambda_regs = [1e-5]
     betas = [1.0]
     ds = [50]

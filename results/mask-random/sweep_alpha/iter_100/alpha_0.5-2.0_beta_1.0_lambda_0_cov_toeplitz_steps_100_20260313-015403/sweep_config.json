@@ -1,18 +1,14 @@
 {
-  "alphas": [
-    0.5,
-    1.0,
-    2.0
-  ],
+  "sweep_key": "alpha",
   "seeds": [
     0
   ],
   "base_config": {
     "experiment": {
-      "save_root": "results/individual_runs",
+      "save_root": null,
       "run_name": null,
-      "seed": 0,
-      "experiment_number": null
+      "seed": null,
+      "experiment_number": 3
     },
     "data": {
       "T": 4,
@@ -31,7 +27,7 @@
       "device": "cpu"
     },
     "training": {
-      "alpha": 1.0,
+      "alpha": null,
       "n_steps": 100,
       "learning_rate": 0.001,
       "lambda_reg": 0.0001
@@ -39,5 +35,10 @@
     "evaluation": {
       "n_population": 5000
     }
-  }
+  },
+  "alphas": [
+    0.5,
+    1.0,
+    2.0
+  ]
 }

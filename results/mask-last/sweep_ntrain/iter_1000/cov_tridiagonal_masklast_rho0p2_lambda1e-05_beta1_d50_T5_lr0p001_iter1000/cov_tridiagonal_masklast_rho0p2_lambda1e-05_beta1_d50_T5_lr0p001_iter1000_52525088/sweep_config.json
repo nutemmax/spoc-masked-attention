@@ -1,0 +1,50 @@
+{
+  "sweep_key": "n_train",
+  "seeds": [
+    42
+  ],
+  "base_config": {
+    "experiment": {
+      "save_root": null,
+      "run_name": null,
+      "seed": null
+    },
+    "data": {
+      "T": 5,
+      "d": 50,
+      "covariance_type": "tridiagonal",
+      "rho": 0.2,
+      "length_scale": null,
+      "eta": null,
+      "mask_value": 1.0,
+      "masking_strategy": "last"
+    },
+    "model": {
+      "r": 50,
+      "beta": 1.0,
+      "normalize_sqrt_d": true,
+      "dtype": "float64",
+      "device": "cpu"
+    },
+    "training": {
+      "alpha": 1.0,
+      "n_train": null,
+      "n_steps": 1000,
+      "learning_rate": 0.001,
+      "lambda_reg": 1e-05
+    },
+    "evaluation": {
+      "n_population": 5000
+    }
+  },
+  "n_trains": [
+    10,
+    50,
+    100,
+    500,
+    1000,
+    2000,
+    5000,
+    10000
+  ]
+}

@@ -7,8 +7,8 @@ set -euo pipefail
 PROJECT_DIR=/home/anastass/spoc-masked-attention
 cd "$PROJECT_DIR"
 
-ITERS=1000
-CONFIG_DIR="configs/generated_grid_biggerT_masklast_$ITERS"
+ITERS=10000
+CONFIG_DIR="configs/generated_grid_maskrandom_$ITERS"
 
 for config in "$CONFIG_DIR"/*.yaml; do
   echo "Submitting n_train sweep for $config"
