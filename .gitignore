@@ -19,6 +19,9 @@ logs/
 # Jupyter
 .ipynb_checkpoints/
 
+# overleaf
+overleaf/
+
 # OS files
 .DS_Store
 Thumbs.db
