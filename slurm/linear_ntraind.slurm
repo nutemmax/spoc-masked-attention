@@ -11,7 +11,7 @@
 #SBATCH --array=0-31
 
 set -euo pipefail
-CONFIG_PATH="/home/anastass/spoc-masked-attention/configs/presentation/cov_toeplitz_masklast_rho0p2_lambda1e-05_beta1_d50_T5_lr0p001_iter10000.yaml"
+CONFIG_PATH="/home/anastass/spoc-masked-attention/configs/presentation/cov_toeplitz_maskrandom_rho1e-2_lambda1e-05_beta1_d50_T5_lr0p001_iter10000.yaml"
 
 ITERS=$(python - <<EOF
 import yaml
