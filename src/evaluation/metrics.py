@@ -2,7 +2,7 @@ from __future__ import annotations
 import numpy as np
 
 def attention_matrix(W : np.ndarray) -> np.ndarray:
-    """Computes the attention matrix S = W W^T"""
+    """Computes the attention matrix S = W W^T/sqrt(dr)"""
     if W.ndim != 2:
         raise ValueError("W must be a 2d array.")
     d, r = W.shape

@@ -6,8 +6,8 @@ experiment:
 data:
   T: 4
   d: 50
-  covariance_type: tridiagonal
-  rho: 0.3
+  covariance_type: toeplitz
+  rho: 0.8
   length_scale: null
   eta: null
   mask_value: 1.0
@@ -22,9 +22,13 @@ model:
 
 training:
   alpha: 1.0
-  n_steps: 1000
-  learning_rate: 0.001
-  lambda_reg: 0.00001
+  n_steps: 10000
+  learning_rate: 1e-3
+  lambda_reg: 1e-5
 
 evaluation:
   n_population: 5000
+
+logging:
+  use_wandb: true
+  project: spoc-masked-attention

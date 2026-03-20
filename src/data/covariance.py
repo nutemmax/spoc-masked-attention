@@ -8,14 +8,22 @@ def make_identity_covariance(T: int) -> np.ndarray:
     return np.eye(T, dtype=np.float64)
 
 
-def make_tridiagonal_covariance(T: int, rho: float) -> np.ndarray:
+def make_tridiagonal_covariance(T: int, rho: float, tol : float = 1e-10) -> np.ndarray:
     if T <= 0:
         raise ValueError("T must be a positive integer.")
-
     sigma = np.eye(T, dtype=np.float64)
     for i in range(T - 1):
         sigma[i, i + 1] = rho
         sigma[i + 1, i] = rho
+
+    # psd check
+    eigvals = np.linalg.eigvalsh(sigma)
+    min_eig = eigvals.min()
+    if min_eig < -tol:
+        raise ValueError(
+            f"Covariance matrix is not PSD. "
+            f"Smallest eigenvalue = {min_eig:.3e} < -{tol:.1e}."
+        )
     return sigma
 
 

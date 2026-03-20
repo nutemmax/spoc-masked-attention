@@ -28,106 +28,9 @@ from src.models.attention import TiedSingleHeadAttention
 from src.training.trainer import evaluate_reconstruction_loss, fit
 import src.utils.plots as plots
 from src.utils.plots import *
-print("Using plots from:", plots.__file__)
-print("Has build_config_suffix:", hasattr(plots, "build_config_suffix"))
-
-def get_default_config() -> dict:
-    """Return default experiment config."""
-    return {
-        "experiment": {
-            "save_root": "results/individual",
-            "run_name": None,
-            "seed": 0,
-        },
-        "data": {
-            "T": 4,
-            "d": 64,
-            "covariance_type": "tridiagonal",
-            "rho": 0.5,
-            "length_scale": None,
-            "eta": None,
-            "mask_value": 1.0,
-            "masking_strategy": "last", # or 'random'
-        },
-        "model": {
-            "r": 64,
-            "beta": 10.0,
-            "normalize_sqrt_d": False,
-            "dtype": "float64",
-            "device": "cpu",
-        },
-        "training": {
-            "alpha": 5.0,
-            "n_train": None,
-            "n_steps": 600,
-            "learning_rate": 1e-3,
-            "lambda_reg": 0.0,
-        },
-        "evaluation": {
-            "n_population": 5000,
-        },
-    }
-
-
-def deep_update(base: dict, updates: dict) -> dict:
-    """Recursively update a nested dictionary."""
-    result = copy.deepcopy(base)
-    for key, value in updates.items():
-        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            result[key] = deep_update(result[key], value)
-        else:
-            result[key] = value
-    return result
-
-
-def load_config(config_path: str | None) -> dict:
-    """Load config from yaml or use defaults."""
-    config = get_default_config()
-    if config_path is None:
-        return config
-
-    with open(config_path, "r", encoding="utf-8") as f:
-        loaded = yaml.safe_load(f)
-
-    if loaded is None:
-        return config
-    if not isinstance(loaded, dict):
-        raise ValueError("Config file must contain a dictionary at top level.")
-
-    return deep_update(config, loaded)
-
-
-def apply_overrides(
-    config: dict,
-    alpha: float | None,
-    n_train: int | None,
-    seed: int | None,
-    save_root: str | None,
-    run_name: str | None,
-) -> dict:
-    """Apply command-line overrides to config."""
-    updated = copy.deepcopy(config)
-
-    if alpha is not None:
-        updated["training"]["alpha"] = float(alpha)
-    if n_train is not None:
-        updated["training"]["n_train"] = int(n_train)
-    if seed is not None:
-        updated["experiment"]["seed"] = int(seed)
-    if save_root is not None:
-        updated["experiment"]["save_root"] = save_root
-    if run_name is not None:
-        updated["experiment"]["run_name"] = run_name
-    return updated
-
-def get_torch_dtype(dtype_name: str) -> torch.dtype:
-    """Map dtype name to torch dtype."""
-    name = dtype_name.lower()
-    if name == "float64":
-        return torch.float64
-    if name == "float32":
-        return torch.float32
-    raise ValueError("dtype must be 'float64' or 'float32'.")
+from src.utils.config import apply_overrides, get_torch_dtype, load_config, validate_config
+from src.utils.io import create_run_dir, save_json, save_run_arrays
+from src.utils.wandb import init_wandb_if_enabled, log_training_history,log_final_metrics,finish_wandb
 
 
 def set_seeds(seed: int) -> np.random.Generator:
@@ -136,46 +39,8 @@ def set_seeds(seed: int) -> np.random.Generator:
     torch.manual_seed(seed)
     return np.random.default_rng(seed)
 
-
-def numpy_to_torch(X: np.ndarray, dtype: torch.dtype, device: str | torch.device) -> torch.Tensor:
-    """Convert numpy array to torch tensor."""
+def numpy_to_torch(X: np.ndarray,dtype: torch.dtype, device: str | torch.device) -> torch.Tensor:
     return torch.tensor(X, dtype=dtype, device=device)
-
-
-def format_float_for_name(x: float) -> str:
-    """Format float compactly for folder names."""
-    if float(x).is_integer():
-        return f"{x:.1f}"
-    return f"{x:.3f}".rstrip("0").rstrip(".")
-
-
-def build_run_name(config: dict) -> str:
-    """Build a unique and informative run name."""
-    custom_name = config["experiment"]["run_name"]
-    if custom_name is not None:
-        return str(custom_name)
-
-    seed = int(config["experiment"]["seed"])
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-
-    n_train = config["training"].get("n_train")
-    if n_train is not None:
-        return f"ntrain_{int(n_train)}_seed_{seed}_{timestamp}"
-
-    alpha = format_float_for_name(float(config["training"]["alpha"]))
-    return f"alpha_{alpha}_seed_{seed}_{timestamp}"
-
-
-def create_run_dir(config: dict) -> Path:
-    """Create and return the run directory."""
-    save_root = PROJECT_ROOT / config["experiment"]["save_root"]
-    save_root.mkdir(parents=True, exist_ok=True)
-
-    run_name = build_run_name(config)
-    run_dir = save_root / run_name
-    run_dir.mkdir(parents=True, exist_ok=False)
-    return run_dir
-
 
 def compute_run_metrics(
     W: np.ndarray,
@@ -227,20 +92,14 @@ def compute_run_metrics(
         "seed": int(seed),
         "n_train": int(n_train),
         "n_population": int(n_population),
-
-        # main risk metrics
         "train_loss": float(train_loss),
         "population_risk": float(population_risk),
         "bayes_population_risk": float(bayes_population_risk),
         "empirical_bayes_risk": float(empirical_bayes_risk),
         "generalization_gap": generalization_gap,
         "excess_population_risk": excess_population_risk,
-
-        # runtime
         "runtime_seconds": float(runtime_seconds),
         "runtime_per_step_seconds": float(runtime_seconds / n_steps) if n_steps > 0 else float("nan"),
-
-        # convergence
         "initial_objective": initial_objective,
         "final_objective": final_objective,
         "best_objective": best_objective,
@@ -249,35 +108,27 @@ def compute_run_metrics(
         "final_train_loss_history": final_train_loss_history,
         "best_train_loss_history": best_train_loss_history,
         "train_loss_reduction": train_loss_reduction,
-
-        # spectral
         "weight_norm": float(weight_norm),
         "trace_s": float(trace_s),
         "top_eigenvalue": float(top_eigenvalue),
         "min_eigenvalue": float(min_eigenvalue),
         "R1": float(R1),
-
-        # config name
         "config_suffix": config_suffix,
     }
 
     return metrics, S, eigenvalues
 
-def save_json(data: dict, path: Path) -> None:
-    """Save a dictionary as json."""
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
 
-
-def save_run_arrays(run_dir: Path, W: np.ndarray, S: np.ndarray, sigma: np.ndarray, eigenvalues: np.ndarray, config_suffix: str) -> None:
-    """Save numpy arrays for one run."""
-    np.save(run_dir / f"W__{config_suffix}.npy", W)
-    np.save(run_dir / f"S__{config_suffix}.npy", S)
-    np.save(run_dir / f"sigma__{config_suffix}.npy", sigma)
-    np.save(run_dir / f"eigenvalues__{config_suffix}.npy", eigenvalues)
-
-
-def save_run_plots(run_dir: Path, S: np.ndarray, sigma: np.ndarray, eigenvalues: np.ndarray, history: dict[str, list[float]], config: dict, actual_n_train: int, bayes_population_risk: float | None = None) -> None:
+def save_run_plots(
+    run_dir: Path,
+    S: np.ndarray,
+    sigma: np.ndarray,
+    eigenvalues: np.ndarray,
+    history: dict[str, list[float]],
+    config: dict,
+    actual_n_train: int,
+    bayes_population_risk: float | None = None,
+) -> None:
     """Save plots for one run."""
     label = build_plot_config_label(config, actual_n_train=actual_n_train)
     suffix = build_config_suffix(config, actual_n_train=actual_n_train)
@@ -286,7 +137,7 @@ def save_run_plots(run_dir: Path, S: np.ndarray, sigma: np.ndarray, eigenvalues:
     fig.savefig(run_dir / f"eigenvalues__{suffix}.png", bbox_inches="tight")
     plt.close(fig)
 
-    fig, _ = plot_eigenvalue_histogram(eigenvalues, title=f"Histogram of eigenvalues of learned matrix $S$\n{label}")
+    fig, _ = plot_eigenvalue_histogram(eigenvalues,title=f"Histogram of eigenvalues of learned matrix $S$\n{label}")
     fig.savefig(run_dir / f"eigenvalue_histogram__{suffix}.png", bbox_inches="tight")
     plt.close(fig)
 
@@ -298,16 +149,13 @@ def save_run_plots(run_dir: Path, S: np.ndarray, sigma: np.ndarray, eigenvalues:
     fig.savefig(run_dir / f"sigma_heatmap__{suffix}.png", bbox_inches="tight")
     plt.close(fig)
 
-    # training history with bayes optimal
     fig, _ = plot_training_history(history, title=f"Training convergence\n{label}", bayes_population_risk=bayes_population_risk)
     fig.savefig(run_dir / f"training_convergence_withBO__{suffix}.png", bbox_inches="tight")
     plt.close(fig)
 
-    # without bayes optimal
-    fig, _ = plot_training_history(history, title=f"Training convergence\n{label}", bayes_population_risk=None)
+    fig, _ = plot_training_history(history,title=f"Training convergence\n{label}", bayes_population_risk=None)
     fig.savefig(run_dir / f"training_convergence__{suffix}.png", bbox_inches="tight")
     plt.close(fig)
-
 
 def run_experiment(config: dict) -> dict:
     """Run one experiment and return all outputs."""
@@ -320,13 +168,22 @@ def run_experiment(config: dict) -> dict:
     alpha = config["training"].get("alpha")
     n_train_override = config["training"].get("n_train")
     mask_value = float(config["data"]["mask_value"])
-    masking_strategy = str(config["data"].get("masking_strategy", "random"))
+    masking_strategy = str(config["data"]["masking_strategy"])
+    eval_every = 25
+
     if n_train_override is not None:
         n_train_override = int(n_train_override)
         if n_train_override <= 0:
             raise ValueError("n_train must be positive.")
     else:
+        if alpha is None:
+            raise ValueError("Either training.n_train or training.alpha must be provided.")
         alpha = float(alpha)
+
+    if masking_strategy not in {"random", "last"}:
+        raise ValueError(
+            f"Unsupported masking_strategy='{masking_strategy}'. Expected 'random' or 'last'."
+        )
 
     if r != d:
         raise ValueError("Current setup expects r = d.")
@@ -382,6 +239,15 @@ def run_experiment(config: dict) -> dict:
     X_tilde_pop_t = numpy_to_torch(X_tilde_pop, dtype=dtype, device=device)
     mask_pop_t = torch.tensor(mask_pop, dtype=torch.long, device=device)
 
+    actual_n_train = int(X_train.shape[0])
+
+    wandb_module = init_wandb_if_enabled(
+        config=config,
+        actual_n_train=actual_n_train,
+        alpha=float(alpha) if n_train_override is None else None,
+        seed=seed,
+    )
+
     model = TiedSingleHeadAttention(
         d=d,
         r=r,
@@ -391,79 +257,97 @@ def run_experiment(config: dict) -> dict:
         device=device,
     )
 
-
     n_steps = int(config["training"]["n_steps"])
     start_time = time.perf_counter()
-    history = fit(
-        model=model,
-        X_tilde=X_tilde_train_t,
-        X=X_train_t,
-        mask_indices=mask_train_t,
-        n_steps=n_steps,
-        learning_rate=float(config["training"]["learning_rate"]),
-        lambda_reg=float(config["training"]["lambda_reg"]),
-        X_tilde_eval=X_tilde_pop_t,
-        X_eval=X_pop_t,
-        mask_eval=mask_pop_t,
-        eval_every=25,
-    )
-    runtime_seconds = time.perf_counter() - start_time
 
-    train_loss = evaluate_reconstruction_loss(model, X_tilde_train_t, X_train_t, mask_train_t)
-    population_risk = evaluate_reconstruction_loss(model, X_tilde_pop_t, X_pop_t, mask_pop_t)
+    try:
+        history = fit(
+            model=model,
+            X_tilde=X_tilde_train_t,
+            X=X_train_t,
+            mask_indices=mask_train_t,
+            n_steps=n_steps,
+            learning_rate=float(config["training"]["learning_rate"]),
+            lambda_reg=float(config["training"]["lambda_reg"]),
+            X_tilde_eval=X_tilde_pop_t,
+            X_eval=X_pop_t,
+            mask_eval=mask_pop_t,
+            eval_every=eval_every,
+        )
+        runtime_seconds = time.perf_counter() - start_time
 
-    if masking_strategy == "random":
-        bayes_population_risk = bayes_population_risk_uniform_mask(sigma)
-    elif masking_strategy == "last":
-        bayes_population_risk = bayes_population_risk_last_mask(sigma)
-    else:
-        raise ValueError(f"Unsupported masking_strategy='{masking_strategy}'. Expected 'random' or 'last'.")
-    empirical_bayes_risk = bayes_population_risk_empirical(X_pop, sigma, mask_pop)
+        train_loss = evaluate_reconstruction_loss(
+            model, X_tilde_train_t, X_train_t, mask_train_t
+        )
+        population_risk = evaluate_reconstruction_loss(
+            model, X_tilde_pop_t, X_pop_t, mask_pop_t
+        )
 
-    W = model.W.detach().cpu().numpy()
-    actual_n_train = int(X_train.shape[0])
-    config_suffix = build_config_suffix(config, actual_n_train=actual_n_train)
+        if masking_strategy == "random":
+            bayes_population_risk = bayes_population_risk_uniform_mask(sigma)
+        else:
+            bayes_population_risk = bayes_population_risk_last_mask(sigma)
 
-    metrics, S, eigenvalues = compute_run_metrics(
-        W=W,
-        sigma=sigma,
-        train_loss=train_loss,
-        population_risk=population_risk,
-        bayes_population_risk=bayes_population_risk,
-        empirical_bayes_risk=empirical_bayes_risk,
-        alpha=float(alpha) if n_train_override is None else None,
-        seed=seed,
-        n_train=actual_n_train,
-        n_population=n_population,
-        history=history,
-        runtime_seconds=runtime_seconds,
-        n_steps=n_steps,
-        config_suffix=config_suffix,
-    )
+        empirical_bayes_risk = bayes_population_risk_empirical(X_pop, sigma, mask_pop)
 
-    return {
-        "config": config,
-        "metrics": metrics,
-        "history": history,
-        "W": W,
-        "S": S,
-        "sigma": sigma,
-        "eigenvalues": eigenvalues,
-        "model_state_dict": model.state_dict(),
-        "actual_n_train": actual_n_train,
-        "config_suffix": config_suffix,
-    }
+        W = model.W.detach().cpu().numpy()
+        config_suffix = build_config_suffix(config, actual_n_train=actual_n_train)
+
+        metrics, S, eigenvalues = compute_run_metrics(
+            W=W,
+            sigma=sigma,
+            train_loss=train_loss,
+            population_risk=population_risk,
+            bayes_population_risk=bayes_population_risk,
+            empirical_bayes_risk=empirical_bayes_risk,
+            alpha=float(alpha) if n_train_override is None else None,
+            seed=seed,
+            n_train=actual_n_train,
+            n_population=n_population,
+            history=history,
+            runtime_seconds=runtime_seconds,
+            n_steps=n_steps,
+            config_suffix=config_suffix,
+        )
+
+        log_training_history(
+            wandb_module=wandb_module,
+            history=history,
+            eval_every=eval_every,
+        )
+
+        log_final_metrics(
+            wandb_module=wandb_module,
+            metrics=metrics,
+            step=n_steps,
+        )
+
+        return {
+            "config": config,
+            "metrics": metrics,
+            "history": history,
+            "W": W,
+            "S": S,
+            "sigma": sigma,
+            "eigenvalues": eigenvalues,
+            "model_state_dict": model.state_dict(),
+            "actual_n_train": actual_n_train,
+            "config_suffix": config_suffix,
+        }
+
+    finally:
+        finish_wandb(wandb_module)
 
 
 def save_experiment_outputs(results: dict, run_dir: Path) -> None:
     """Save all outputs of one run."""
     suffix = results["config_suffix"]
     actual_n_train = results["actual_n_train"]
+
     save_json(results["config"], run_dir / f"config__{suffix}.json")
     save_json(results["metrics"], run_dir / f"metrics__{suffix}.json")
     # save_json(results["history"], run_dir / f"history__{suffix}.json")
 
-    # disable for now to save disk space!!! temporary!!
     save_run_arrays(
         run_dir=run_dir,
         W=results["W"],
@@ -472,9 +356,8 @@ def save_experiment_outputs(results: dict, run_dir: Path) -> None:
         eigenvalues=results["eigenvalues"],
         config_suffix=suffix,
     )
-    
-    torch.save(results["model_state_dict"], run_dir / f"model_state__{suffix}.pt")
 
+    torch.save(results["model_state_dict"], run_dir / f"model_state__{suffix}.pt")
     save_run_plots(
         run_dir=run_dir,
         S=results["S"],
@@ -483,47 +366,62 @@ def save_experiment_outputs(results: dict, run_dir: Path) -> None:
         history=results["history"],
         config=results["config"],
         actual_n_train=actual_n_train,
-        bayes_population_risk = results["metrics"]["bayes_population_risk"],
+        bayes_population_risk=results["metrics"]["bayes_population_risk"],
     )
 
-    
+
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description="Run one SPOC masked-attention experiment.")
-    parser.add_argument("--config", type=str, default=None, help="Path to yaml config file.")
+    parser.add_argument("--config", type=str, required=True, help="Path to yaml config file.")
     parser.add_argument("--alpha", type=float, default=None, help="Override alpha.")
-    parser.add_argument("--n-train", type=int, default=None, help="Override training set size. If provided, overrides alpha.")
+    parser.add_argument("--n-train",type=int, default=None, help="Override training set size. If provided, overrides alpha.")
     parser.add_argument("--seed", type=int, default=None, help="Override random seed.")
     parser.add_argument("--save-root", type=str, default=None, help="Override save root directory.")
     parser.add_argument("--run-name", type=str, default=None, help="Override run name.")
     return parser.parse_args()
 
 
+
 def main() -> None:
     args = parse_args()
-    config = load_config(args.config)
-    config = apply_overrides(
-        config=config,
-        alpha=args.alpha,
-        n_train=args.n_train,
-        seed=args.seed,
-        save_root=args.save_root,
-        run_name=args.run_name,
-    )
 
-    if args.save_root is None:
-        if args.config is None:
-            config_name = "default"
+    try:
+        config = load_config(args.config)
+
+        # set save_root BEFORE validation
+        if args.save_root is not None:
+            config.setdefault("experiment", {})
+            config["experiment"]["save_root"] = args.save_root
         else:
-            config_name = Path(args.config).stem
-        config["experiment"]["save_root"] = f"results/individual/{config_name}"
+            # if not provided in CLI and missing in config -> set default
+            if "save_root" not in config.get("experiment", {}):
+                config_name = Path(args.config).stem
+                config.setdefault("experiment", {})
+                config["experiment"]["save_root"] = f"results/individual/{config_name}"
 
-    run_dir = create_run_dir(config)
-    results = run_experiment(config)
-    save_experiment_outputs(results, run_dir)
+        validate_config(config)
+        config = apply_overrides(
+            config=config,
+            alpha=args.alpha,
+            n_train=args.n_train,
+            seed=args.seed,
+            save_root=None,  # important: to avoid overriding what we just set
+            run_name=args.run_name,
+        )
 
-    print(f"Saved run to: {run_dir}")
-    print(json.dumps(results["metrics"], indent=2))
+        run_dir = create_run_dir(PROJECT_ROOT, config)
+        results = run_experiment(config)
+        save_experiment_outputs(results, run_dir)
+
+        print(f"Saved run to: {run_dir}")
+        print(json.dumps(results["metrics"], indent=2))
+
+    except Exception as e:
+        print(f"[ERROR] Run failed for config: {args.config}")
+        print(str(e))
+        raise
+
 
 
 if __name__ == "__main__":

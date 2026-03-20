@@ -21,6 +21,7 @@ logs/
 
 # results!!!
 results/
+wandb/
 
 
 # OS files
