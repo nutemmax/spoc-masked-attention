@@ -11,7 +11,7 @@
 #SBATCH --array=0-31
 
 set -euo pipefail
-CONFIG_PATH="/home/anastass/spoc-masked-attention/configs/presentation/cov_toeplitz_maskrandom_rho1e-2_lambda1e-05_beta1_d50_T5_lr0p001_iter10000.yaml"
+CONFIG_PATH="/home/anastass/spoc-masked-attention/configs/presentation/cov_toeplitz_masklast_rho0p9_lambda1e-05_beta1_d500_T5_lr0p001_iter10000.yaml"
 
 ITERS=$(python - <<EOF
 import yaml
@@ -50,7 +50,7 @@ CONFIG_NAME=$(basename "$CONFIG_PATH" .yaml)
 SWEEP_TIMESTAMP=${SLURM_ARRAY_JOB_ID:-$SLURM_JOB_ID}
 SWEEP_DIR_REL="results/mask-${MASKING_STRATEGY}/presentation/iter_${ITERS}/${CONFIG_NAME}/${CONFIG_NAME}_${SWEEP_TIMESTAMP}"
 SEED=42
-NTRAIN_CSV="10,20,30,40,50,75,100,125,150,175,200,250,300,250,400,500,750,1000,1250,1500,1750,2000,2250,2500,3000,4000,5000,6000,7000,8000,9000,10000"
+NTRAIN_CSV="10,20,30,40,50,60,80,100,125,150,175,200,250,300,250,400,500,750,1000,1250,1500,1750,2000,2500,3000,4000,5000,6000,7000,8000,9000,10000"
 
 
 # ====== SETUP ======

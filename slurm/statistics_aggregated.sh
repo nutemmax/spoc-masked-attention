@@ -1,5 +1,5 @@
 # SWEEP_ROOT="results/mask-last/"
-SWEEP_ROOT="results/mask-last/presentation/"
+SWEEP_ROOT="results/mask-random/presentation/"
 
 # ====== SETUP ======
 PROJECT_DIR=/home/anastass/spoc-masked-attention
