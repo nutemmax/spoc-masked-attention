@@ -14,7 +14,7 @@
 # 0-19 for original setup
 
 set -euo pipefail
-CONFIG_PATH="/home/anastass/spoc-masked-attention/configs/presentation/cov_toeplitz_maskrandom_rho0p99_lambda1e-05_beta1_d500_T50_lr0p001_iter10000.yaml"
+CONFIG_PATH="/home/anastass/spoc-masked-attention/configs/presentation/cov_toeplitz_masklast_rho0p99_lambda1e-05_beta1_d500_T50_lr0p001_iter10000.yaml"
 
 ITERS=$(python - <<EOF
 import yaml
