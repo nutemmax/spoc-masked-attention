@@ -1,19 +1,19 @@
 #!/bin/bash
-#SBATCH --job-name=lin_identity
-#SBATCH --output=logs/linear_ntrain_%A_%a.out
-#SBATCH --error=logs/linear_ntrain_%A_%a.err
+#SBATCH --job-name=quadratic_0p99
+#SBATCH --output=logs/quadratic/%A_%a.out
+#SBATCH --error=logs/quadratic/%A_%a.err
 #SBATCH --partition=academic
-#SBATCH --time=12:00:00
-#SBATCH --cpus-per-task=1
+#SBATCH --time=24:00:00
+#SBATCH --cpus-per-task=5
 #SBATCH --mail-user=emma.anastassova@epfl.ch
 #SBATCH --mail-type=FAIL
-#SBATCH --mem=4G
-#SBATCH --array=0-25
+#SBATCH --mem=24G
+#SBATCH --array=0-19%10
 
-# or 0-31 for the long one
+# comment : %5 means max 5 jobs running at once
 
 set -euo pipefail
-CONFIG_PATH="/home/anastass/spoc-masked-attention/configs/presentation/cov_identity_maskrandom_lambda1e-05_beta1_d50_T5_lr0p001_iter10000.yaml"
+CONFIG_PATH="/home/anastass/spoc-masked-attention/configs/presentation/done/cov_toeplitz_maskrandom_rho0p99_lambda1e-05_beta1_d200_T100_lr0p001_iter10000.yaml"
 
 ITERS=$(python - <<EOF
 import yaml
@@ -52,8 +52,7 @@ CONFIG_NAME=$(basename "$CONFIG_PATH" .yaml)
 SWEEP_TIMESTAMP=${SLURM_ARRAY_JOB_ID:-$SLURM_JOB_ID}
 SWEEP_DIR_REL="results/mask-${MASKING_STRATEGY}/presentation/iter_${ITERS}/${CONFIG_NAME}/${CONFIG_NAME}_${SWEEP_TIMESTAMP}"
 SEED=42
-# NTRAIN_CSV="10,20,30,40,50,60,80,100,125,150,175,200,250,300,250,400,500,750,1000,1250,1500,1750,2000,2500,3000,4000,5000,6000,7000,8000,9000,10000"
-NTRAIN_CSV="10,20,30,40,50,60,80,100,125,150,175,200,250,300,250,400,500,750,1000,1250,1500,1750,2000,2500,5000,10000"
+NTRAIN_CSV="10,30,50,100,150,200,250,500,750,1000,1500,1750,2000,2500,3000,5000,10000,20000,50000,100000"
 
 
 # ====== SETUP ======

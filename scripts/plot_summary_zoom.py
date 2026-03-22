@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 import sys
 
@@ -17,9 +18,9 @@ if str(PROJECT_ROOT) not in sys.path:
 plt.rcParams.update({
     "font.size": 12,
     "axes.titlesize": 20,
-    "axes.labelsize": 18,
-    "xtick.labelsize": 14,
-    "ytick.labelsize": 14,
+    "axes.labelsize": 20,
+    "xtick.labelsize": 16,
+    "ytick.labelsize": 16,
     "legend.fontsize": 16,
     "figure.titlesize": 16,
 })
@@ -58,16 +59,57 @@ def format_float_for_title(x: float | None) -> str:
     if x is None:
         return "NA"
 
+    x = float(x)
+
     if x == 0:
         return "0"
 
-    s = f"{x:.6g}"
-    if "e" in s:
-        base, exp = s.split("e")
-        exp = int(exp)  # removes leading zeros like -05 -> -5
-        s = f"{base}e{exp}"
+    if float(x).is_integer():
+        return str(int(x))
 
-    return s
+    abs_x = abs(x)
+    exp = round(math.log10(abs_x))
+
+    if math.isclose(abs_x, 10 ** exp, rel_tol=1e-12, abs_tol=1e-15):
+        if x < 0:
+            return rf"-10^{{{exp}}}"
+        return rf"10^{{{exp}}}"
+
+    if abs_x < 1e-3 or abs_x >= 1e3:
+        s = f"{x:.2e}"
+        base, exponent = s.split("e")
+        exponent = int(exponent)
+        base = float(base)
+        base_str = f"{base:.2f}".rstrip("0").rstrip(".")
+        return rf"{base_str}\cdot 10^{{{exponent}}}"
+
+    return f"{x:.4f}".rstrip("0").rstrip(".")
+
+
+def format_covariance_label(covariance_type: str, rho: float | None) -> str:
+    cov = str(covariance_type).lower()
+
+    if cov == "identity":
+        return r"$\Sigma = I$"
+    if cov == "toeplitz":
+        if rho is None:
+            return r"$\Sigma = \mathrm{Toeplitz}$"
+        return rf"$\Sigma = \mathrm{{Toeplitz}}(\rho={format_float_for_title(rho)})$"
+    if cov == "tridiagonal":
+        if rho is None:
+            return r"$\Sigma = \mathrm{Tridiag}$"
+        return rf"$\Sigma = \mathrm{{Tridiag}}(\rho={format_float_for_title(rho)})$"
+    if rho is None:
+        return rf"$\Sigma = \mathrm{{{covariance_type}}}$"
+    return rf"$\Sigma = \mathrm{{{covariance_type}}}(\rho={format_float_for_title(rho)})$"
+
+
+def format_masking_label(masking_strategy: str | None) -> str:
+    if masking_strategy is None:
+        return "Mask=NA"
+
+    mask = str(masking_strategy).replace("_", "-")
+    return f"Mask={mask}"
 
 
 def format_config_label(base_config: dict | None) -> str:
@@ -87,24 +129,24 @@ def format_config_label(base_config: dict | None) -> str:
     T = data_cfg.get("T", None)
     lr = training_cfg.get("learning_rate", None)
     n_steps = training_cfg.get("n_steps", None)
-    alpha = training_cfg.get("alpha", None)
 
-    line1 = (
-        f"Cov={covariance_type}, Mask={masking_strategy}, "
-        f"$\\rho$ = {format_float_for_title(rho)}, "
-        f"$\\lambda$ = {format_float_for_title(lambda_reg)}, "
-        f"$\\beta$ = {format_float_for_title(beta)}"
-    )
+    line1_parts = [
+        format_covariance_label(covariance_type, rho),
+        format_masking_label(masking_strategy),
+        rf"$\lambda = {format_float_for_title(lambda_reg)}$" if lambda_reg is not None else None,
+        rf"$\beta = {format_float_for_title(beta)}$" if beta is not None else None,
+    ]
+    line1 = ", ".join(part for part in line1_parts if part is not None)
 
     line2_parts = []
     if d is not None:
-        line2_parts.append(f"$d$ = {d}")
+        line2_parts.append(rf"$d = {d}$")
     if T is not None:
-        line2_parts.append(f"$T$ = {T}")
+        line2_parts.append(rf"$T = {T}$")
     if lr is not None:
-        line2_parts.append(f"lr = {format_float_for_title(lr)}")
+        line2_parts.append(rf"$\eta = {format_float_for_title(lr)}$")
     if n_steps is not None:
-        line2_parts.append(f"iters = {n_steps}")
+        line2_parts.append(rf"$\mathrm{{iters}} = {n_steps}$")
 
     line2 = ", ".join(line2_parts)
 
@@ -145,15 +187,18 @@ def prepare_ntrain_data(
     return data
 
 
-def make_plot_title(base_title: str, config_label: str, x_min: int | None, x_max: int | None) -> str:
-    zoom_label = None
-    if x_min is not None or x_max is not None:
-        left = x_min if x_min is not None else 0
-        right = x_max if x_max is not None else "max"
+def make_plot_title(
+    config_label: str,
+    include_metric_title: bool,
+) -> str:
+    title_parts = []
 
-    title_parts = [base_title]
+    if include_metric_title:
+        title_parts.append(r"Train and population risk vs $n_{\mathrm{train}}$")
+
     if config_label:
         title_parts.append(config_label)
+
     return "\n".join(title_parts)
 
 
@@ -163,6 +208,7 @@ def plot_train_pop_vs_ntrain(
     config_label: str = "",
     x_min: int | None = None,
     x_max: int | None = None,
+    include_metric_title: bool = True,
     dpi: int = 300,
 ) -> None:
     data = prepare_ntrain_data(df, x_min=x_min, x_max=x_max)
@@ -198,7 +244,7 @@ def plot_train_pop_vs_ntrain(
             bayes_risk,
             linestyle="--",
             linewidth=2.0,
-            color = "red",
+            color="red",
             label="Bayes Optimal Risk",
         )
 
@@ -206,10 +252,8 @@ def plot_train_pop_vs_ntrain(
     ax.set_ylabel("Risk")
 
     title = make_plot_title(
-        base_title=r"Train loss and Population risk vs $n_{\mathrm{train}}$",
         config_label=config_label,
-        x_min=x_min,
-        x_max=x_max,
+        include_metric_title=include_metric_title,
     )
     ax.set_title(title, pad=16)
 
@@ -252,13 +296,21 @@ def find_summary_dirs(root: Path) -> list[Path]:
     return unique
 
 
-def build_output_name(x_min: int | None, x_max: int | None, suffix: str = "") -> str:
+def build_output_name(
+    x_min: int | None,
+    x_max: int | None,
+    include_metric_title: bool,
+    suffix: str = "",
+) -> str:
     if x_min is None and x_max is None:
         name = "train_pop_vs_ntrain_full"
     else:
         left = x_min if x_min is not None else 0
         right = x_max if x_max is not None else "max"
         name = f"train_pop_vs_ntrain_zoom_{left}_{right}"
+
+    title_tag = "with_metric_title" if include_metric_title else "config_only_title"
+    name = f"{name}_{title_tag}"
 
     if suffix:
         name += f"_{suffix}"
@@ -287,16 +339,23 @@ def process_one_sweep_dir(
     plots_dir.mkdir(parents=True, exist_ok=True)
 
     for x_min, x_max in zip(xmins, xmaxs):
-        filename = build_output_name(x_min=x_min, x_max=x_max, suffix=suffix)
-        save_path = plots_dir / filename
+        for include_metric_title in [True, False]:
+            filename = build_output_name(
+                x_min=x_min,
+                x_max=x_max,
+                include_metric_title=include_metric_title,
+                suffix=suffix,
+            )
+            save_path = plots_dir / filename
 
-        plot_train_pop_vs_ntrain(
-            df=df,
-            save_path=save_path,
-            config_label=config_label,
-            x_min=x_min,
-            x_max=x_max,
-        )
+            plot_train_pop_vs_ntrain(
+                df=df,
+                save_path=save_path,
+                config_label=config_label,
+                x_min=x_min,
+                x_max=x_max,
+                include_metric_title=include_metric_title,
+            )
 
 
 def parse_int_list(arg: str | None) -> list[int]:

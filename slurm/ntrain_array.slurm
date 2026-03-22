@@ -1,14 +1,14 @@
 #!/bin/bash
-#SBATCH --job-name=masklast10k
+#SBATCH --job-name=identity
 #SBATCH --output=logs/ntrain_%A_%a.out
 #SBATCH --error=logs/ntrain_%A_%a.err
 #SBATCH --partition=academic
-#SBATCH --time=02:00:00
+#SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mail-user=emma.anastassova@epfl.ch
 #SBATCH --mail-type=FAIL
 #SBATCH --mem=4G
-#SBATCH --array=0-31
+#SBATCH --array=0-23
 
 # for the other one, 0-22, else 0-7, or 0-31
 
@@ -17,7 +17,7 @@ set -euo pipefail
 
 # CONFIG_PATH=$1
 # comment out
-CONFIG_PATH="/home/anastass/spoc-masked-attention/configs/default-masklast.yaml"
+CONFIG_PATH="/home/anastass/spoc-masked-attention/configs/presentation/cov_identity_maskrandom_lambda1e-05_beta1_d50_T5_lr0p001_iter10000.yaml"
 
 ITERS=$(python - <<EOF
 import yaml
@@ -58,8 +58,9 @@ SWEEP_DIR_REL="results/mask-${MASKING_STRATEGY}/sweep_ntrain/iter_${ITERS}/${CON
 SEED=42
 # NTRAIN_CSV="10,50,100,150,200,250,300,400,500,750,1000,1250,1500,2000,2500,3000,4000,5000,6000,7000,8000,9000,10000"
 # NTRAIN_CSV="10,50,100,500,1000,2000,5000,10000"
+# NTRAIN_CSV="10,20,30,40,50,75,100,125,150,175,200,250,300,400,500,750,1000,1250,1500,1750,2000,2250,2500,3000,4000,5000,6000,7000,8000,9000,10000"
 
-NTRAIN_CSV="10,20,30,40,50,75,100,125,150,175,200,250,300,250,400,500,750,1000,1250,1500,1750,2000,2250,2500,3000,4000,5000,6000,7000,8000,9000,10000"
+NTRAIN_CSV="10,20,30,40,50,75,100,125,150,175,200,250,300,400,500,750,1000,1250,1500,1750,2000,2500,5000,10000"
 
 
 # ====== SETUP ======

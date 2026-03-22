@@ -22,7 +22,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.baselines.bayes import bayes_population_risk_empirical, bayes_population_risk_uniform_mask, bayes_population_risk_last_mask
 from src.data.covariance import build_covariance, is_positive_definite
-from src.data.generator import generate_single_mask_dataset, generate_single_mask_dataset_from_alpha
+from src.data.generator import generate_single_mask_dataset, generate_single_mask_dataset_from_alpha, generate_single_mask_dataset_torch, generate_single_mask_dataset_from_alpha_torch
 from src.evaluation.metrics import attention_matrix, compute_eigenvalues_symmetric, compute_spectral_concentration, compute_trace, compute_weights_norm
 from src.models.attention import TiedSingleHeadAttention
 from src.training.trainer import evaluate_reconstruction_loss, fit
@@ -40,7 +40,12 @@ def set_seeds(seed: int) -> np.random.Generator:
     return np.random.default_rng(seed)
 
 def numpy_to_torch(X: np.ndarray,dtype: torch.dtype, device: str | torch.device) -> torch.Tensor:
-    return torch.tensor(X, dtype=dtype, device=device)
+    t = torch.from_numpy(X)
+    if t.dtype != dtype:
+        t = t.to(dtype=dtype)
+    if str(device) != "cpu":
+        t = t.to(device=device)
+    return t
 
 def compute_run_metrics(
     W: np.ndarray,
@@ -160,7 +165,7 @@ def save_run_plots(
 def run_experiment(config: dict) -> dict:
     """Run one experiment and return all outputs."""
     seed = int(config["experiment"]["seed"])
-    rng = set_seeds(seed)
+    set_seeds(seed)
 
     T = int(config["data"]["T"])
     d = int(config["data"]["d"])
@@ -188,7 +193,10 @@ def run_experiment(config: dict) -> dict:
     if r != d:
         raise ValueError("Current setup expects r = d.")
 
-    sigma = build_covariance(
+    dtype = get_torch_dtype(config["model"]["dtype"])
+    device = config["model"]["device"]
+
+    sigma_np = build_covariance(
         covariance_type=config["data"]["covariance_type"],
         T=T,
         rho=config["data"]["rho"],
@@ -196,50 +204,44 @@ def run_experiment(config: dict) -> dict:
         eta=config["data"]["eta"],
     )
 
-    if not is_positive_definite(sigma):
+    if not is_positive_definite(sigma_np):
         raise ValueError("Chosen covariance matrix is not positive definite.")
 
+    sigma_t = torch.from_numpy(sigma_np).to(dtype=dtype, device=device)
+
     if n_train_override is not None:
-        X_train, X_tilde_train, _, mask_train = generate_single_mask_dataset(
+        X_train_t, X_tilde_train_t, mask_train_t = generate_single_mask_dataset_torch(
             n_samples=n_train_override,
-            sigma=sigma,
+            sigma=sigma_t,
             d=d,
             mask_value=mask_value,
-            rng=rng,
+            dtype=dtype,
+            device=device,
             masking_strategy=masking_strategy,
         )
     else:
-        X_train, X_tilde_train, _, mask_train = generate_single_mask_dataset_from_alpha(
+        X_train_t, X_tilde_train_t, mask_train_t = generate_single_mask_dataset_from_alpha_torch(
             alpha=alpha,
-            sigma=sigma,
+            sigma=sigma_t,
             d=d,
             mask_value=mask_value,
-            rng=rng,
+            dtype=dtype,
+            device=device,
             masking_strategy=masking_strategy,
         )
 
+    actual_n_train = int(X_train_t.shape[0])
+
     n_population = int(config["evaluation"]["n_population"])
-    X_pop, X_tilde_pop, _, mask_pop = generate_single_mask_dataset(
+    X_pop_t, X_tilde_pop_t, mask_pop_t = generate_single_mask_dataset_torch(
         n_samples=n_population,
-        sigma=sigma,
+        sigma=sigma_t,
         d=d,
         mask_value=mask_value,
-        rng=rng,
+        dtype=dtype,
+        device=device,
         masking_strategy=masking_strategy,
     )
-
-    dtype = get_torch_dtype(config["model"]["dtype"])
-    device = config["model"]["device"]
-
-    X_train_t = numpy_to_torch(X_train, dtype=dtype, device=device)
-    X_tilde_train_t = numpy_to_torch(X_tilde_train, dtype=dtype, device=device)
-    mask_train_t = torch.tensor(mask_train, dtype=torch.long, device=device)
-
-    X_pop_t = numpy_to_torch(X_pop, dtype=dtype, device=device)
-    X_tilde_pop_t = numpy_to_torch(X_tilde_pop, dtype=dtype, device=device)
-    mask_pop_t = torch.tensor(mask_pop, dtype=torch.long, device=device)
-
-    actual_n_train = int(X_train.shape[0])
 
     wandb_module = init_wandb_if_enabled(
         config=config,
@@ -284,18 +286,21 @@ def run_experiment(config: dict) -> dict:
         )
 
         if masking_strategy == "random":
-            bayes_population_risk = bayes_population_risk_uniform_mask(sigma)
+            bayes_population_risk = bayes_population_risk_uniform_mask(sigma_np)
         else:
-            bayes_population_risk = bayes_population_risk_last_mask(sigma)
+            bayes_population_risk = bayes_population_risk_last_mask(sigma_np)
 
-        empirical_bayes_risk = bayes_population_risk_empirical(X_pop, sigma, mask_pop)
+        X_pop_np = X_pop_t.detach().cpu().numpy()
+        mask_pop_np = mask_pop_t.detach().cpu().numpy()
+        empirical_bayes_risk = bayes_population_risk_empirical(X_pop_np, sigma_np, mask_pop_np)
+        del X_pop_np, mask_pop_np
 
         W = model.W.detach().cpu().numpy()
         config_suffix = build_config_suffix(config, actual_n_train=actual_n_train)
 
         metrics, S, eigenvalues = compute_run_metrics(
             W=W,
-            sigma=sigma,
+            sigma=sigma_np,
             train_loss=train_loss,
             population_risk=population_risk,
             bayes_population_risk=bayes_population_risk,
@@ -328,7 +333,7 @@ def run_experiment(config: dict) -> dict:
             "history": history,
             "W": W,
             "S": S,
-            "sigma": sigma,
+            "sigma": sigma_np,
             "eigenvalues": eigenvalues,
             "model_state_dict": model.state_dict(),
             "actual_n_train": actual_n_train,

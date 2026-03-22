@@ -1,7 +1,11 @@
 from __future__ import annotations
+
 import numpy as np
+import torch
+
 
 # ========= SINGLE-TOKEN MASKING ==========
+
 def make_mask_embedding(T: int, d: int, mask_value: float = 1.0) -> np.ndarray:
     """Creates and returns the mask embedding matrix U = 1_T u^T as an array of shape (T, d)."""
     if T <= 0 or d <= 0:
@@ -20,40 +24,8 @@ def sample_single_random_mask_indices(
     if rng is None:
         rng = np.random.default_rng()
 
-    return rng.integers(low=0, high=T, size=n_samples)
+    return rng.integers(low=0, high=T, size=n_samples, dtype=np.int64)
 
-
-def apply_single_token_mask(
-    X: np.ndarray,
-    mask_indices: np.ndarray,
-    mask_value: float = 1.0,
-) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Apply single-token masking to a batch of sequences
-
-    Returns:
-    - X_tilde of shape (n_samples, T, d)
-    - Y_target of shape (n_samples, T, d)
-    """
-    if X.ndim != 3:
-        raise ValueError("X must have shape (n_samples, T, d).")
-
-    n_samples, T, d = X.shape
-
-    if mask_indices.shape != (n_samples,):
-        raise ValueError("mask_indices must have shape (n_samples,).")
-
-    U = make_mask_embedding(T=T, d=d, mask_value=mask_value)
-
-    X_tilde = X.copy()
-    Y_target = np.broadcast_to(U, (n_samples, T, d)).copy()
-
-    for i in range(n_samples):
-        a = int(mask_indices[i])
-        X_tilde[i, a, :] = U[a, :]
-        Y_target[i, a, :] = X[i, a, :]
-
-    return X_tilde, Y_target
 
 def sample_single_last_mask_indices(
     n_samples: int,
@@ -63,7 +35,37 @@ def sample_single_last_mask_indices(
     if n_samples <= 0 or T <= 0:
         raise ValueError("n_samples and T must be positive.")
 
-    return np.full(shape=(n_samples,), fill_value=T - 1, dtype=int)
+    return np.full(shape=(n_samples,), fill_value=T - 1, dtype=np.int64)
+
+
+def apply_single_token_mask(
+    X: np.ndarray,
+    mask_indices: np.ndarray,
+    mask_value: float = 1.0,
+    return_targets: bool = False,
+) -> tuple[np.ndarray, np.ndarray] | tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Apply single-token masking to a batch of sequences.
+    """
+    if X.ndim != 3:
+        raise ValueError("X must have shape (n_samples, T, d).")
+
+    n_samples, _, _ = X.shape
+
+    if mask_indices.shape != (n_samples,):
+        raise ValueError("mask_indices must have shape (n_samples,).")
+
+    X_tilde = X.copy()
+    rows = np.arange(n_samples)
+    X_tilde[rows, mask_indices, :] = mask_value
+
+    if not return_targets:
+        return X_tilde, mask_indices
+
+    Y_target = np.full_like(X, fill_value=mask_value)
+    Y_target[rows, mask_indices, :] = X[rows, mask_indices, :]
+
+    return X_tilde, Y_target, mask_indices
 
 
 def build_masked_dataset(
@@ -71,8 +73,11 @@ def build_masked_dataset(
     mask_value: float = 1.0,
     rng: np.random.Generator | None = None,
     masking_strategy: str = "random",
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Full single-token masking pipeline for a batch of sequences X."""
+    return_targets: bool = False,
+) -> tuple[np.ndarray, np.ndarray] | tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Full single-token masking pipeline for a batch of sequences X.
+    """
     if X.ndim != 3:
         raise ValueError("X must have shape (n_samples, T, d).")
 
@@ -80,33 +85,139 @@ def build_masked_dataset(
 
     if masking_strategy == "random":
         mask_indices = sample_single_random_mask_indices(
-            n_samples=n_samples, T=T, rng=rng
+            n_samples=n_samples,
+            T=T,
+            rng=rng,
         )
     elif masking_strategy == "last":
         mask_indices = sample_single_last_mask_indices(
-            n_samples=n_samples, T=T
+            n_samples=n_samples,
+            T=T,
         )
     else:
         raise ValueError(
             f"Unknown masking_strategy='{masking_strategy}'. Use 'random' or 'last'."
         )
 
-    X_tilde, Y_target = apply_single_token_mask(
+    return apply_single_token_mask(
         X=X,
         mask_indices=mask_indices,
         mask_value=mask_value,
+        return_targets=return_targets,
     )
+
+
+# ========= TORCH SINGLE-TOKEN MASKING ==========
+
+def sample_single_random_mask_indices_torch(
+    n_samples: int,
+    T: int,
+    device: str | torch.device = "cpu",
+) -> torch.Tensor:
+    """Torch version of random single-token mask sampling."""
+    if n_samples <= 0 or T <= 0:
+        raise ValueError("n_samples and T must be positive.")
+
+    return torch.randint(
+        low=0,
+        high=T,
+        size=(n_samples,),
+        device=device,
+        dtype=torch.long,
+    )
+
+
+def sample_single_last_mask_indices_torch(
+    n_samples: int,
+    T: int,
+    device: str | torch.device = "cpu",
+) -> torch.Tensor:
+    """Torch version that always masks the last token."""
+    if n_samples <= 0 or T <= 0:
+        raise ValueError("n_samples and T must be positive.")
+
+    return torch.full(
+        size=(n_samples,),
+        fill_value=T - 1,
+        device=device,
+        dtype=torch.long,
+    )
+
+
+def apply_single_token_mask_torch(
+    X: torch.Tensor,
+    mask_indices: torch.Tensor,
+    mask_value: float = 1.0,
+    return_targets: bool = False,
+) -> tuple[torch.Tensor, torch.Tensor] | tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    Torch version of single-token masking.
+    """
+    if X.ndim != 3:
+        raise ValueError("X must have shape (n_samples, T, d).")
+
+    n_samples, _, _ = X.shape
+
+    if mask_indices.shape != (n_samples,):
+        raise ValueError("mask_indices must have shape (n_samples,).")
+
+    X_tilde = X.clone()
+    rows = torch.arange(n_samples, device=X.device)
+    X_tilde[rows, mask_indices, :] = mask_value
+
+    if not return_targets:
+        return X_tilde, mask_indices
+
+    Y_target = torch.full_like(X, fill_value=mask_value)
+    Y_target[rows, mask_indices, :] = X[rows, mask_indices, :]
 
     return X_tilde, Y_target, mask_indices
 
 
+def build_masked_dataset_torch(
+    X: torch.Tensor,
+    mask_value: float = 1.0,
+    masking_strategy: str = "random",
+    return_targets: bool = False,
+) -> tuple[torch.Tensor, torch.Tensor] | tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    if X.ndim != 3:
+        raise ValueError("X must have shape (n_samples, T, d).")
+
+    n_samples, T, _ = X.shape
+
+    if masking_strategy == "random":
+        mask_indices = sample_single_random_mask_indices_torch(
+            n_samples=n_samples,
+            T=T,
+            device=X.device,
+        )
+    elif masking_strategy == "last":
+        mask_indices = sample_single_last_mask_indices_torch(
+            n_samples=n_samples,
+            T=T,
+            device=X.device,
+        )
+    else:
+        raise ValueError(
+            f"Unknown masking_strategy='{masking_strategy}'. Use 'random' or 'last'."
+        )
+
+    return apply_single_token_mask_torch(
+        X=X,
+        mask_indices=mask_indices,
+        mask_value=mask_value,
+        return_targets=return_targets,
+    )
+
+
 # ========= MULTI-TOKEN MASKING ==========
+
 def resolve_number_of_masked_tokens(
     T: int,
     n_masked_tokens: int | None = None,
     mask_fraction: float | None = None,
 ) -> int:
-    """Resolve the number of masked tokens from either an integer or a fraction"""
+    """Resolve the number of masked tokens from either an integer or a fraction."""
     if T <= 0:
         raise ValueError("T must be positive.")
 
@@ -117,7 +228,7 @@ def resolve_number_of_masked_tokens(
         if not (1 <= n_masked_tokens <= T):
             raise ValueError("n_masked_tokens must satisfy 1 <= n_masked_tokens <= T.")
         return int(n_masked_tokens)
-    
+
     assert mask_fraction is not None
     if not (0.0 < mask_fraction <= 1.0):
         raise ValueError("mask_fraction must satisfy 0 < mask_fraction <= 1.")
@@ -137,8 +248,8 @@ def sample_multi_random_mask_matrix(
     rng: np.random.Generator | None = None,
 ) -> np.ndarray:
     """
-    Sample a boolean mask matrix of shape (n_samples, T);
-    Each row contains exactly m masked positions sampled uniformly without replacement
+    Sample a boolean mask matrix of shape (n_samples, T).
+    Each row contains exactly m masked positions sampled uniformly without replacement.
     """
     if n_samples <= 0 or T <= 0:
         raise ValueError("n_samples and T must be positive.")
@@ -160,20 +271,21 @@ def sample_multi_random_mask_matrix(
 
     return mask_matrix
 
+
 def apply_multi_token_mask(
     X: np.ndarray,
     mask_matrix: np.ndarray,
     mask_value: float = 1.0,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
-    Apply multi-token masking to a batch of sequences
+    Apply multi-token masking to a batch of sequences.
 
     Returns:
     - X_tilde of shape (n_samples, T, d)
     - Y_target of shape (n_samples, T, d)
 
-    Masked rows are replaced by the mask embedding in X_tilde
-    Unmasked rows are replaced by the mask embedding in Y_target
+    Masked rows are replaced by the mask embedding in X_tilde.
+    Unmasked rows are replaced by the mask embedding in Y_target.
     """
     if X.ndim != 3:
         raise ValueError("X must have shape (n_samples, T, d).")
@@ -204,7 +316,7 @@ def build_multi_masked_dataset(
     rng: np.random.Generator | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    Full multi-token masking pipeline
+    Full multi-token masking pipeline.
 
     Returns:
     - X_tilde of shape (n_samples, T, d)
