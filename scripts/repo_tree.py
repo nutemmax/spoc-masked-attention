@@ -14,6 +14,8 @@ IGNORE = {
     ".DS_Store",
     ".venv",
     "venv",
+    "wandb",
+    "overleaf"
 }
 
 

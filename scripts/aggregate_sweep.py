@@ -7,16 +7,13 @@ import json
 from pathlib import Path
 import sys
 
-import matplotlib.pyplot as plt
-import pandas as pd
-
 # ensure repository root is importable when running this file directly.
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-import src.utils.plots_alpha as plots_alpha
 from src.utils.plots_alpha import expected_plot_paths, generate_summary_plots
+
 
 def extract_datetime_from_run_name(run_name: str) -> str | None:
     parts = run_name.split("_")
@@ -33,6 +30,7 @@ def find_metrics_files(run_dir: Path) -> list[Path]:
         p for p in run_dir.iterdir()
         if p.is_file() and p.name.startswith("metrics") and p.name.endswith(".json")
     )
+
 
 def find_config_files(run_dir: Path) -> list[Path]:
     return sorted(
@@ -120,10 +118,10 @@ def detect_sweep_key(rows: list[dict]) -> str:
     has_alpha = any(row.get("alpha") is not None for row in rows)
     has_ntrain = any(row.get("n_train") is not None for row in rows)
 
-    if has_alpha:
-        return "alpha"
     if has_ntrain:
         return "n_train"
+    if has_alpha:
+        return "alpha"
     raise ValueError("Could not detect sweep variable (alpha or n_train).")
 
 
@@ -211,6 +209,7 @@ def write_summary_csv(rows: list[dict], path: Path) -> None:
         "top_eigenvalue",
         "min_eigenvalue",
         "R1",
+        "effective_rank",
         "datetime",
     ]
 
@@ -242,7 +241,13 @@ def is_aggregated(sweep_dir: Path, sweep_key: str) -> bool:
         return False
 
     expected_paths = expected_plot_paths(sweep_dir, sweep_key)
-    return all(path.exists() for path in expected_paths)
+    all_plots_exist = all(path.exists() for path in expected_paths)
+
+    if sweep_key == "n_train":
+        eig_csv_exists = (sweep_dir / "eigenvalue_summary_stats.csv").exists()
+        return all_plots_exist and eig_csv_exists
+
+    return all_plots_exist
 
 
 def aggregate_one_sweep(sweep_dir: Path, force: bool = False) -> None:
@@ -267,8 +272,14 @@ def aggregate_one_sweep(sweep_dir: Path, force: bool = False) -> None:
     if metadata is None:
         print(f"[skip] No run configs found in {sweep_dir}")
         return
+
     save_sweep_metadata(sweep_dir, metadata)
-    generate_summary_plots(sweep_dir, sweep_key)
+
+    generate_summary_plots(
+        sweep_dir=sweep_dir,
+        sweep_key=sweep_key,
+        zoom_ranges=[(None, None), (0, 1000), (0, 2000)],
+    )
 
     print(f"[done] Aggregated {sweep_dir} (sweep key: {sweep_key})")
 

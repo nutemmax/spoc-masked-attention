@@ -26,7 +26,7 @@ export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 export MKL_NUM_THREADS=$SLURM_CPUS_PER_TASK
 export OPENBLAS_NUM_THREADS=$SLURM_CPUS_PER_TASK
 
-CONFIG_PATH="/home/anastass/spoc-masked-attention/configs/presentation/cov_identity_maskrandom_lambda1e-05_beta1_d50_T5_lr0p001_iter10000.yaml"
+CONFIG_PATH="/home/anastass/spoc-masked-attention/configs/maskrandom/iter1000/cov_toeplitz_maskrandom_rho0p9_lambda1e-05_beta1_d50_T5_lr0p001_iter1000.yaml"
 NTRAIN=2000
 SEED=42
 
@@ -39,7 +39,7 @@ echo "n_train:     $NTRAIN"
 echo "seed:        $SEED"
 echo "save_root:   $SAVE_ROOT"
 
-python -u scripts/run_experiment.py \
+python -u scripts/run_experiment_new.py \
   --config "$CONFIG_PATH" \
   --n-train "$NTRAIN" \
   --seed "$SEED" \

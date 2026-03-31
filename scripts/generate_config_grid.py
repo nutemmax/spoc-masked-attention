@@ -5,9 +5,9 @@ from pathlib import Path
 import yaml
 import copy
 
-iters = 10000
-masking_str = "last"
-OUTPUT_DIR = Path(f"configs/generated_grid_mask{masking_str}_{iters}")
+iters = 5000
+masking_str = "random"
+OUTPUT_DIR = Path(f"configs/numerics-maskrandom")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 BASE_CONFIG_PATH = Path("configs/default.yaml")
@@ -57,11 +57,11 @@ def keep_chessboard(index_tuple: tuple[int, ...]) -> bool:
 def main() -> None:
     base_config = load_base_config(BASE_CONFIG_PATH)
 
-    covariance_types = ["tridiagonal"]
-    rhos = [0.2, 0.3]
+    covariance_types = ["toeplitz"]
+    rhos = [0.3, 0,8, 0.99]
     lambda_regs = [1e-5]
     betas = [1.0]
-    ds = [50]
+    ds = [25, 50, 100]
     Ts = [5]
     learning_rates = [1e-3]
     n_steps_list = [iters]

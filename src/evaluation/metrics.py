@@ -104,6 +104,13 @@ def masked_mse_per_coordinate(
     return float(mse)
 
 
+def compute_effective_rank(eigvals: np.ndarray, eps: float = 1e-12) -> float:
+    eigvals = np.asarray(eigvals, dtype=float)
+    eigvals = eigvals[eigvals > eps]
 
+    if eigvals.size == 0:
+        return 0.0
 
+    p = eigvals / eigvals.sum()
+    return float(np.exp(-np.sum(p * np.log(p))))
 

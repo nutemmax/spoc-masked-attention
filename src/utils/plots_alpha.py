@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 
 
-# =========================
-# GLOBAL PLOT STYLE
-# =========================
 plt.rcParams.update({
     "font.size": 12,
     "axes.titlesize": 18,
@@ -18,6 +17,9 @@ plt.rcParams.update({
     "ytick.labelsize": 13,
     "legend.fontsize": 13,
     "figure.titlesize": 16,
+    "axes.grid": False,
+    "mathtext.fontset": "cm",
+    "savefig.bbox": "tight",
 })
 
 
@@ -26,14 +28,87 @@ def set_multiline_title(ax, title: str) -> None:
 
 
 # =========================
-# FORMATTING HELPERS
+# formatting helpers
 # =========================
+
 def format_float_for_title(x) -> str:
     if x is None:
-        return "None"
-    if isinstance(x, float):
-        return f"{x:.3g}"
-    return str(x)
+        return "NA"
+
+    x = float(x)
+
+    if x == 0:
+        return "0"
+
+    if float(x).is_integer():
+        return str(int(x))
+
+    abs_x = abs(x)
+    exp = round(math.log10(abs_x))
+
+    if math.isclose(abs_x, 10 ** exp, rel_tol=1e-12, abs_tol=1e-15):
+        if x < 0:
+            return rf"-10^{{{exp}}}"
+        return rf"10^{{{exp}}}"
+
+    if abs_x < 1e-3 or abs_x >= 1e3:
+        s = f"{x:.2e}"
+        base, exponent = s.split("e")
+        exponent = int(exponent)
+        base = float(base)
+        base_str = f"{base:.2f}".rstrip("0").rstrip(".")
+        return rf"{base_str}\cdot 10^{{{exponent}}}"
+
+    return f"{x:.4f}".rstrip("0").rstrip(".")
+
+
+def format_covariance_label(
+    covariance_type: str | None,
+    rho: float | None,
+    length_scale: float | None = None,
+    eta: float | None = None,
+) -> str:
+    if covariance_type is None:
+        return r"$\Sigma = \mathrm{NA}$"
+
+    cov = str(covariance_type).lower()
+
+    if cov == "identity":
+        return r"$\Sigma = I$"
+    if cov == "toeplitz":
+        if rho is None:
+            return r"$\Sigma = \mathrm{Toeplitz}$"
+        return rf"$\Sigma = \mathrm{{Toeplitz}}(\rho={format_float_for_title(rho)})$"
+    if cov == "tridiagonal":
+        if rho is None:
+            return r"$\Sigma = \mathrm{Tridiag}$"
+        return rf"$\Sigma = \mathrm{{Tridiag}}(\rho={format_float_for_title(rho)})$"
+    if cov == "circulant_ar1":
+        if rho is None:
+            return r"$\Sigma = \mathrm{CircToeplitz}$"
+        return rf"$\Sigma = \mathrm{{CircToeplitz}}(\rho={format_float_for_title(rho)})$"
+    if cov == "matern":
+        if length_scale is None:
+            return r"$\Sigma = \mathrm{Mat\acute ern}$"
+        return rf"$\Sigma = \mathrm{{Mat\acute ern}}(l={format_float_for_title(length_scale)})$"
+    if cov == "exponential":
+        if length_scale is None:
+            return r"$\Sigma = \mathrm{Exp}$"
+        return rf"$\Sigma = \mathrm{{Exp}}(l={format_float_for_title(length_scale)})$"
+    if cov in ["toeplitz_bump", "toeplitz_nn"]:
+        if rho is None or eta is None:
+            return r"$\Sigma = \mathrm{ToeplitzNN}$"
+        return rf"$\Sigma = \mathrm{{ToeplitzNN}}(\rho={format_float_for_title(rho)}, \eta={format_float_for_title(eta)})$"
+
+    if rho is None:
+        return rf"$\Sigma = \mathrm{{{covariance_type}}}$"
+    return rf"$\Sigma = \mathrm{{{covariance_type}}}(\rho={format_float_for_title(rho)})$"
+
+
+def format_masking_label(masking_strategy: str | None) -> str:
+    if masking_strategy is None:
+        return "Mask=NA"
+    return f"Mask={str(masking_strategy).replace('_', '-')}"
 
 
 def format_metric_name(metric: str) -> str:
@@ -55,11 +130,12 @@ def format_metric_name(metric: str) -> str:
         "best_train_loss_history": "Best Train Loss",
         "train_loss_reduction": "Train Loss Reduction",
         "weight_norm": "Weight Norm",
-        "trace_s": "Trace of S",
+        "trace_s": r"$\mathrm{Tr}(S)$",
         "top_eigenvalue": "Top Eigenvalue",
         "min_eigenvalue": "Minimum Eigenvalue",
-        "R1": "R1",
-        "alpha": "Alpha",
+        "R1": r"$R_1$",
+        "effective_rank": "Effective Rank",
+        "alpha": r"$\alpha$",
         "n_train": r"$n_{\mathrm{train}}$",
     }
     return mapping.get(metric, metric.replace("_", " ").title())
@@ -67,20 +143,17 @@ def format_metric_name(metric: str) -> str:
 
 def format_x_label(x_col: str) -> str:
     if x_col == "alpha":
-        return "Alpha"
+        return r"$\alpha$"
     if x_col == "n_train":
         return r"$n_{\mathrm{train}}$"
     return format_metric_name(x_col)
 
 
 # =========================
-# CONFIG LABEL FOR AGGREGATED PLOTS
+# sweep config label
 # =========================
+
 def build_sweep_plot_config_label(sweep_dir: Path, sweep_key: str) -> str:
-    """
-    Build a 2-line hyperparameter label for aggregated plots.
-    Excludes the sweep variable itself from the displayed hyperparameters.
-    """
     sweep_config_path = sweep_dir / "sweep_config.json"
     if not sweep_config_path.exists():
         return ""
@@ -93,50 +166,55 @@ def build_sweep_plot_config_label(sweep_dir: Path, sweep_key: str) -> str:
     model_cfg = base_config.get("model", {})
     train_cfg = base_config.get("training", {})
 
-    cov = data_cfg.get("covariance_type")
-    mask = data_cfg.get("masking_strategy", "random")
-    rho = format_float_for_title(data_cfg.get("rho"))
-    lam = format_float_for_title(train_cfg.get("lambda_reg"))
-    beta = format_float_for_title(model_cfg.get("beta"))
-    T = data_cfg.get("T")
-    d = data_cfg.get("d")
-    lr = format_float_for_title(train_cfg.get("learning_rate"))
-    n_steps = train_cfg.get("n_steps")
+    covariance_type = data_cfg.get("covariance_type", "NA")
+    masking_strategy = data_cfg.get("masking_strategy", "NA")
+    rho = data_cfg.get("rho", None)
+    length_scale = data_cfg.get("length_scale", None)
+    eta = data_cfg.get("eta", None)
+
+    lambda_reg = train_cfg.get("lambda_reg", None)
+    beta = model_cfg.get("beta", None)
+    d = data_cfg.get("d", None)
+    T = data_cfg.get("T", None)
+    lr = train_cfg.get("learning_rate", None)
+    n_steps = train_cfg.get("n_steps", None)
 
     line1_parts = [
-        f"Cov={cov}",
-        f"Mask={mask}",
-        rf"$\rho={rho}$",
-        rf"$\lambda={lam}$",
-        rf"$\beta={beta}$",
+        format_covariance_label(covariance_type, rho, length_scale=length_scale, eta=eta),
+        format_masking_label(masking_strategy),
+        rf"$\lambda = {format_float_for_title(lambda_reg)}$" if lambda_reg is not None else None,
+        rf"$\beta = {format_float_for_title(beta)}$" if beta is not None else None,
     ]
+    line1 = ", ".join(part for part in line1_parts if part is not None)
 
-    line2_parts = [
-        rf"$d={d}$",
-        rf"$T={T}$",
-        f"lr={lr}",
-        f"iters={n_steps}",
-    ]
+    line2_parts = []
+    if d is not None:
+        line2_parts.append(rf"$d = {d}$")
+    if T is not None:
+        line2_parts.append(rf"$T = {T}$")
+    if lr is not None:
+        line2_parts.append(rf"$\eta = {format_float_for_title(lr)}$")
+    if n_steps is not None:
+        line2_parts.append(rf"$\mathrm{{iters}} = {n_steps}$")
 
     if sweep_key != "n_train":
         n_train = train_cfg.get("n_train")
         if n_train is not None:
-            line2_parts.append(rf"$n_{{\mathrm{{train}}}}={int(n_train)}$")
+            line2_parts.append(rf"$n_{{\mathrm{{train}}}} = {int(n_train)}$")
 
     if sweep_key != "alpha":
         alpha = train_cfg.get("alpha")
         if alpha is not None:
-            line2_parts.append(rf"$\alpha={format_float_for_title(alpha)}$")
+            line2_parts.append(rf"$\alpha = {format_float_for_title(alpha)}$")
 
-    line1 = ", ".join(line1_parts)
     line2 = ", ".join(line2_parts)
-
-    return line1 + "\n" + line2
+    return f"{line1}\n{line2}" if line2 else line1
 
 
 # =========================
-# INDIVIDUAL PLOT SAVERS
+# generic plot helpers
 # =========================
+
 def save_metric_plot(
     df: pd.DataFrame,
     x_col: str,
@@ -168,7 +246,6 @@ def save_metric_plot(
     full_title = title_line if not config_label else title_line + "\n" + config_label
 
     set_multiline_title(ax, full_title)
-    ax.grid(True, alpha=0.3)
 
     fig.tight_layout()
     fig.savefig(output_path, bbox_inches="tight")
@@ -215,7 +292,7 @@ def save_metric_plot_with_horizontal_line(
             y=ref_value,
             linestyle="--",
             linewidth=2,
-            color="gold",
+            color="red",
             label=horizontal_label,
         )
     elif horizontal_value is not None:
@@ -223,7 +300,7 @@ def save_metric_plot_with_horizontal_line(
             y=horizontal_value,
             linestyle="--",
             linewidth=2,
-            color="gold",
+            color="red",
             label=horizontal_label,
         )
 
@@ -235,7 +312,6 @@ def save_metric_plot_with_horizontal_line(
 
     set_multiline_title(ax, full_title)
     ax.legend(frameon=True)
-    ax.grid(True, alpha=0.3)
 
     fig.tight_layout()
     fig.savefig(output_path, bbox_inches="tight")
@@ -266,9 +342,8 @@ def save_train_loss_with_ntrain_plot(
         linewidth=2,
         label="Train Loss",
     )
-    ax1.set_xlabel("Alpha")
+    ax1.set_xlabel(r"$\alpha$")
     ax1.set_ylabel("Train Loss")
-    ax1.grid(True, alpha=0.3)
 
     ax2 = ax1.twinx()
     ax2.plot(
@@ -282,12 +357,11 @@ def save_train_loss_with_ntrain_plot(
     ax2.set_ylabel(r"$n_{\mathrm{train}}$")
 
     lines = ax1.get_lines() + ax2.get_lines()
-    labels = [line.get_label() for line in lines]
+    labels = [str(line.get_label()) for line in lines]
     ax1.legend(lines, labels, frameon=True)
 
-    title_line = r"Train Loss and $n_{\mathrm{train}}$ vs Alpha"
+    title_line = r"Train Loss and $n_{\mathrm{train}}$ vs $\alpha$"
     full_title = title_line if not config_label else title_line + "\n" + config_label
-
     set_multiline_title(ax1, full_title)
 
     fig.tight_layout()
@@ -301,7 +375,7 @@ def save_train_vs_population_vs_bayes_plot(
     output_path: Path,
     config_label: str = "",
 ) -> None:
-    required_cols = {"train_loss", "population_risk", "bayes_population_risk", x_col}
+    required_cols = {x_col, "train_loss", "population_risk", "bayes_population_risk"}
     if not required_cols.issubset(df.columns):
         return
 
@@ -310,6 +384,7 @@ def save_train_vs_population_vs_bayes_plot(
         return
 
     plot_df = plot_df.sort_values(by=x_col)
+    bayes_level = plot_df["bayes_population_risk"].mean()
 
     fig, ax = plt.subplots(figsize=(10.5, 7.2))
 
@@ -320,7 +395,6 @@ def save_train_vs_population_vs_bayes_plot(
         linewidth=2,
         label="Train Loss",
     )
-
     ax.plot(
         plot_df[x_col],
         plot_df["population_risk"],
@@ -328,14 +402,11 @@ def save_train_vs_population_vs_bayes_plot(
         linewidth=2,
         label="Population Risk",
     )
-
-    bayes_level = plot_df["bayes_population_risk"].mean()
-
     ax.axhline(
         y=bayes_level,
         linestyle="--",
         linewidth=2,
-        color="gold",
+        color="red",
         label="Bayes Optimal Risk",
     )
 
@@ -347,7 +418,6 @@ def save_train_vs_population_vs_bayes_plot(
 
     set_multiline_title(ax, full_title)
     ax.legend(frameon=True)
-    ax.grid(True, alpha=0.3)
 
     fig.tight_layout()
     fig.savefig(output_path, bbox_inches="tight")
@@ -355,9 +425,251 @@ def save_train_vs_population_vs_bayes_plot(
 
 
 # =========================
-# HIGH-LEVEL PLOT GENERATION
+# zoomed plots over n_train
 # =========================
-def generate_summary_plots(sweep_dir: Path, sweep_key: str) -> None:
+
+def get_bayes_risk(df: pd.DataFrame) -> float | None:
+    if "bayes_population_risk" not in df.columns:
+        return None
+    vals = df["bayes_population_risk"].dropna()
+    if vals.empty:
+        return None
+    return float(vals.iloc[0])
+
+
+def prepare_ntrain_data(
+    df: pd.DataFrame,
+    x_min: int | None = None,
+    x_max: int | None = None,
+) -> pd.DataFrame:
+    data = df.copy()
+    data = data.dropna(subset=["n_train", "train_loss", "population_risk"])
+    data["n_train"] = pd.to_numeric(data["n_train"], errors="coerce")
+    data["train_loss"] = pd.to_numeric(data["train_loss"], errors="coerce")
+    data["population_risk"] = pd.to_numeric(data["population_risk"], errors="coerce")
+    data = data.dropna(subset=["n_train", "train_loss", "population_risk"])
+    data = data.sort_values("n_train")
+
+    if x_min is not None:
+        data = data[data["n_train"] >= x_min]
+    if x_max is not None:
+        data = data[data["n_train"] <= x_max]
+
+    return data
+
+
+def build_zoom_plot_filename(
+    x_min: int | None,
+    x_max: int | None,
+) -> str:
+    if x_min is None and x_max is None:
+        return "train_vs_population_vs_bayes_n_train_full.png"
+    left = x_min if x_min is not None else 0
+    right = x_max if x_max is not None else "max"
+    return f"train_vs_population_vs_bayes_n_train_zoom_{left}_{right}.png"
+
+
+def save_zoomed_train_vs_population_vs_bayes_plot(
+    df: pd.DataFrame,
+    output_path: Path,
+    config_label: str = "",
+    x_min: int | None = None,
+    x_max: int | None = None,
+) -> None:
+    if "n_train" not in df.columns:
+        return
+
+    data = prepare_ntrain_data(df, x_min=x_min, x_max=x_max)
+    if data.empty:
+        return
+
+    bayes_risk = get_bayes_risk(df)
+
+    fig, ax = plt.subplots(figsize=(10.5, 7.2))
+    ax.plot(
+        data["n_train"],
+        data["train_loss"],
+        marker="o",
+        linewidth=2.2,
+        markersize=7,
+        label="Train Loss",
+    )
+    ax.plot(
+        data["n_train"],
+        data["population_risk"],
+        marker="s",
+        linewidth=2.2,
+        markersize=7,
+        label="Population Risk",
+    )
+
+    if bayes_risk is not None:
+        ax.axhline(
+            y=bayes_risk,
+            linestyle="--",
+            linewidth=2,
+            color="red",
+            label="Bayes Optimal Risk",
+        )
+
+    ax.set_xlabel(r"$n_{\mathrm{train}}$")
+    ax.set_ylabel("Risk")
+
+    if x_min is None and x_max is None:
+        title_line = r"Train Loss and Population Risk vs $n_{\mathrm{train}}$"
+    else:
+        left = x_min if x_min is not None else 0
+        right = x_max if x_max is not None else "max"
+        title_line = rf"Train Loss and Population Risk vs $n_{{\mathrm{{train}}}}$ (zoom: {left} to {right})"
+
+    full_title = title_line if not config_label else title_line + "\n" + config_label
+    set_multiline_title(ax, full_title)
+    ax.legend(frameon=True)
+
+    fig.tight_layout()
+    fig.savefig(output_path, bbox_inches="tight")
+    plt.close(fig)
+
+
+# =========================
+# eigenvalue summary stats
+# =========================
+
+def effective_rank(eigvals: np.ndarray, eps: float = 1e-12) -> float:
+    eigvals = np.asarray(eigvals, dtype=float)
+    eigvals = eigvals[eigvals > eps]
+
+    if eigvals.size == 0:
+        return 0.0
+
+    p = eigvals / eigvals.sum()
+    return float(np.exp(-np.sum(p * np.log(p))))
+
+
+def find_eigenvalue_file(run_dir: Path) -> Path | None:
+    matches = sorted(run_dir.glob("eigenvalues*.npy"))
+    if not matches:
+        return None
+    return matches[0]
+
+
+def extract_n_train_from_run_name(run_name: str) -> int | None:
+    parts = run_name.split("_")
+    for i, token in enumerate(parts):
+        if token == "ntrain" and i + 1 < len(parts):
+            try:
+                return int(parts[i + 1])
+            except ValueError:
+                return None
+    return None
+
+
+def compute_eigenvalue_summary_stats(
+    sweep_dir: Path,
+) -> pd.DataFrame:
+    rows = []
+
+    for subdir in sweep_dir.iterdir():
+        if not subdir.is_dir():
+            continue
+        if subdir.name == "plots":
+            continue
+
+        eig_path = find_eigenvalue_file(subdir)
+        if eig_path is None:
+            continue
+
+        n_train = extract_n_train_from_run_name(subdir.name)
+        if n_train is None:
+            continue
+
+        try:
+            eigvals = np.load(eig_path)
+            eigvals = np.asarray(eigvals, dtype=float).reshape(-1)
+        except Exception as e:
+            print(f"[warn] Failed to load eigenvalues from {eig_path}: {e}")
+            continue
+
+        eigvals_sorted = np.sort(eigvals)[::-1]
+        trace = float(np.sum(eigvals))
+        top = float(eigvals_sorted[0]) if eigvals_sorted.size > 0 else np.nan
+        r1 = float(top / trace) if trace > 0 else np.nan
+
+        rows.append({
+            "n_train": int(n_train),
+            "num_eigs": int(eigvals.size),
+            "min_eig": float(np.min(eigvals)) if eigvals.size > 0 else np.nan,
+            "max_eig": float(np.max(eigvals)) if eigvals.size > 0 else np.nan,
+            "mean_eig": float(np.mean(eigvals)) if eigvals.size > 0 else np.nan,
+            "median_eig": float(np.median(eigvals)) if eigvals.size > 0 else np.nan,
+            "std_eig": float(np.std(eigvals)) if eigvals.size > 0 else np.nan,
+            "trace": trace,
+            "top_eigenvalue": top,
+            "R1": r1,
+            "effective_rank": effective_rank(eigvals),
+        })
+
+    if not rows:
+        return pd.DataFrame()
+
+    return pd.DataFrame(rows).sort_values("n_train").reset_index(drop=True)
+
+
+def save_eigenvalue_summary_csv(
+    sweep_dir: Path,
+    df_eigs: pd.DataFrame,
+) -> None:
+    if df_eigs.empty:
+        return
+    df_eigs.to_csv(sweep_dir / "eigenvalue_summary_stats.csv", index=False)
+
+
+def save_eigenvalue_metric_vs_ntrain_plot(
+    df_stats: pd.DataFrame,
+    y_col: str,
+    ylabel: str,
+    metric_title: str,
+    output_path: Path,
+    config_label: str = "",
+) -> None:
+    if df_stats.empty or "n_train" not in df_stats.columns or y_col not in df_stats.columns:
+        return
+
+    plot_df = df_stats[["n_train", y_col]].dropna().copy()
+    if plot_df.empty:
+        return
+
+    plot_df = plot_df.sort_values("n_train")
+
+    fig, ax = plt.subplots(figsize=(10.5, 7.2))
+    ax.plot(
+        plot_df["n_train"],
+        plot_df[y_col],
+        marker="o",
+        linewidth=2.2,
+        markersize=7,
+    )
+
+    ax.set_xlabel(r"$n_{\mathrm{train}}$")
+    ax.set_ylabel(ylabel)
+
+    full_title = metric_title if not config_label else metric_title + "\n" + config_label
+    set_multiline_title(ax, full_title)
+
+    fig.tight_layout()
+    fig.savefig(output_path, bbox_inches="tight")
+    plt.close(fig)
+
+
+# =========================
+# high-level generation
+# =========================
+
+def generate_summary_plots(
+    sweep_dir: Path,
+    sweep_key: str,
+    zoom_ranges: list[tuple[int | None, int | None]] | None = None,
+) -> None:
     summary_csv_path = sweep_dir / "summary.csv"
     if not summary_csv_path.exists():
         print(f"[skip] No summary.csv found in {sweep_dir}")
@@ -388,6 +700,7 @@ def generate_summary_plots(sweep_dir: Path, sweep_key: str) -> None:
         "trace_s",
         "top_eigenvalue",
         "R1",
+        "effective_rank",
     ]
 
     for metric in metrics_to_plot:
@@ -457,9 +770,32 @@ def generate_summary_plots(sweep_dir: Path, sweep_key: str) -> None:
             config_label=config_label,
         )
 
+    if sweep_key == "n_train":
+        if zoom_ranges is None:
+            zoom_ranges = [(None, None), (0,500), (0, 1000), (0, 2000)]
 
-def expected_plot_paths(sweep_dir: Path, sweep_key: str) -> list[Path]:
+        for x_min, x_max in zoom_ranges:
+            filename = build_zoom_plot_filename(x_min, x_max)
+            save_zoomed_train_vs_population_vs_bayes_plot(
+                df=df,
+                output_path=plots_dir / filename,
+                config_label=config_label,
+                x_min=x_min,
+                x_max=x_max,
+            )
+
+        df_eigs = compute_eigenvalue_summary_stats(sweep_dir)
+        if not df_eigs.empty:
+            save_eigenvalue_summary_csv(sweep_dir, df_eigs)
+
+
+
+def expected_plot_paths(
+    sweep_dir: Path,
+    sweep_key: str,
+) -> list[Path]:
     plots_dir = sweep_dir / "plots"
+
     names = [
         f"train_loss_vs_{sweep_key}.png",
         f"population_risk_vs_{sweep_key}.png",
@@ -469,12 +805,22 @@ def expected_plot_paths(sweep_dir: Path, sweep_key: str) -> list[Path]:
         f"trace_s_vs_{sweep_key}.png",
         f"top_eigenvalue_vs_{sweep_key}.png",
         f"R1_vs_{sweep_key}.png",
+        f"effective_rank_vs_{sweep_key}.png",
         f"population_risk_vs_{sweep_key}_with_bayes.png",
         f"train_loss_vs_{sweep_key}_with_bayes.png",
         f"generalization_gap_vs_{sweep_key}_with_zero.png",
         f"excess_population_risk_vs_{sweep_key}_with_zero.png",
         f"train_vs_population_vs_bayes_{sweep_key}.png",
     ]
+
     if sweep_key == "alpha":
         names.append("train_loss_and_ntrain_vs_alpha.png")
+
+    if sweep_key == "n_train":
+        names.extend([
+            "train_vs_population_vs_bayes_n_train_full.png",
+            "train_vs_population_vs_bayes_n_train_zoom_0_1000.png",
+            "train_vs_population_vs_bayes_n_train_zoom_0_2000.png",
+        ])
+
     return [plots_dir / name for name in names]

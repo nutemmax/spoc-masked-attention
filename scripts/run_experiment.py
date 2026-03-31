@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import argparse
-import copy
 import json
 import sys
-from datetime import datetime
+import time
 from pathlib import Path
 
 import matplotlib
@@ -12,40 +11,48 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-import yaml
-import time
 
 # ensure repository root is importable when running this file directly.
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.baselines.bayes import bayes_population_risk_empirical, bayes_population_risk_uniform_mask, bayes_population_risk_last_mask
+from src.baselines.bayes import (
+    bayes_population_risk_empirical,
+    bayes_population_risk_last_mask,
+    bayes_population_risk_uniform_mask,
+)
 from src.data.covariance import build_covariance, is_positive_definite
-from src.data.generator import generate_single_mask_dataset, generate_single_mask_dataset_from_alpha, generate_single_mask_dataset_torch, generate_single_mask_dataset_from_alpha_torch
-from src.evaluation.metrics import attention_matrix, compute_eigenvalues_symmetric, compute_spectral_concentration, compute_trace, compute_weights_norm
+from src.data.generator import (
+    generate_single_mask_dataset_from_alpha_torch,
+    generate_single_mask_dataset_torch,
+)
+from src.evaluation.metrics import (
+    attention_matrix,
+    compute_eigenvalues_symmetric,
+    compute_spectral_concentration,
+    compute_trace,
+    compute_weights_norm,
+    compute_effective_rank
+)
 from src.models.attention import TiedSingleHeadAttention
 from src.training.trainer import evaluate_reconstruction_loss, fit
-import src.utils.plots as plots
-from src.utils.plots import *
 from src.utils.config import apply_overrides, get_torch_dtype, load_config, validate_config
 from src.utils.io import create_run_dir, save_json, save_run_arrays
-from src.utils.wandb import init_wandb_if_enabled, log_training_history,log_final_metrics,finish_wandb
+from src.utils.wandb import (
+    finish_wandb,
+    init_wandb_if_enabled,
+    log_final_metrics,
+    log_training_history,
+)
+import src.utils.plots as plots
 
 
 def set_seeds(seed: int) -> np.random.Generator:
-    """Set numpy and torch seeds and return a numpy generator."""
     np.random.seed(seed)
     torch.manual_seed(seed)
     return np.random.default_rng(seed)
 
-def numpy_to_torch(X: np.ndarray,dtype: torch.dtype, device: str | torch.device) -> torch.Tensor:
-    t = torch.from_numpy(X)
-    if t.dtype != dtype:
-        t = t.to(dtype=dtype)
-    if str(device) != "cpu":
-        t = t.to(device=device)
-    return t
 
 def compute_run_metrics(
     W: np.ndarray,
@@ -63,7 +70,6 @@ def compute_run_metrics(
     n_steps: int,
     config_suffix: str,
 ) -> tuple[dict, np.ndarray, np.ndarray]:
-    """Compute scalar, convergence, runtime, and spectral metrics for one run."""
     S = attention_matrix(W)
     eigenvalues = compute_eigenvalues_symmetric(S)
 
@@ -71,6 +77,7 @@ def compute_run_metrics(
     top_eigenvalue = float(eigenvalues[0])
     min_eigenvalue = float(eigenvalues[-1])
     R1 = compute_spectral_concentration(eigenvalues)
+    effective_rank = compute_effective_rank(eigenvalues)
     weight_norm = compute_weights_norm(W)
 
     objective_history = history.get("objective", [])
@@ -118,6 +125,7 @@ def compute_run_metrics(
         "top_eigenvalue": float(top_eigenvalue),
         "min_eigenvalue": float(min_eigenvalue),
         "R1": float(R1),
+        "effective_rank": float(effective_rank),
         "config_suffix": config_suffix,
     }
 
@@ -134,36 +142,78 @@ def save_run_plots(
     actual_n_train: int,
     bayes_population_risk: float | None = None,
 ) -> None:
-    """Save plots for one run."""
-    label = build_plot_config_label(config, actual_n_train=actual_n_train)
-    suffix = build_config_suffix(config, actual_n_train=actual_n_train)
+    suffix = plots.build_config_suffix(config, actual_n_train=actual_n_train)
 
-    fig, _ = plot_eigenvalues(eigenvalues, title=f"Eigenvalues of learned matrix $S$\n{label}")
+    fig, _ = plots.plot_eigenvalues(
+        eigenvalues,
+        title=plots.build_plot_title(
+            metric_title=r"Sorted eigenvalues of learned matrix $S$",
+            config=config,
+            actual_n_train=actual_n_train,
+        ),
+    )
     fig.savefig(run_dir / f"eigenvalues__{suffix}.png", bbox_inches="tight")
     plt.close(fig)
 
-    fig, _ = plot_eigenvalue_histogram(eigenvalues,title=f"Histogram of eigenvalues of learned matrix $S$\n{label}")
+    fig, _ = plots.plot_eigenvalue_histogram(
+        eigenvalues,
+        title=plots.build_plot_title(
+            metric_title=r"Eigenvalue histogram of learned matrix $S$",
+            config=config,
+            actual_n_train=actual_n_train,
+        ),
+    )
     fig.savefig(run_dir / f"eigenvalue_histogram__{suffix}.png", bbox_inches="tight")
     plt.close(fig)
 
-    fig, _ = plot_matrix_heatmap(S, title=f"Heatmap of learned matrix $S$\n{label}")
+    fig, _ = plots.plot_matrix_heatmap(
+        S,
+        title=plots.build_plot_title(
+            metric_title=r"Heatmap of learned matrix $S$",
+            config=config,
+            actual_n_train=actual_n_train,
+        ),
+    )
     fig.savefig(run_dir / f"S_heatmap__{suffix}.png", bbox_inches="tight")
     plt.close(fig)
 
-    fig, _ = plot_matrix_heatmap(sigma, title=f"Heatmap of teacher covariance $\\Sigma$\n{label}")
+    fig, _ = plots.plot_matrix_heatmap(
+        sigma,
+        title=plots.build_plot_title(
+            metric_title=r"Heatmap of teacher covariance $\Sigma$",
+            config=config,
+            actual_n_train=actual_n_train,
+        ),
+    )
     fig.savefig(run_dir / f"sigma_heatmap__{suffix}.png", bbox_inches="tight")
     plt.close(fig)
 
-    fig, _ = plot_training_history(history, title=f"Training convergence\n{label}", bayes_population_risk=bayes_population_risk)
+    fig, _ = plots.plot_training_history(
+        history,
+        title=plots.build_plot_title(
+            metric_title="Training convergence",
+            config=config,
+            actual_n_train=actual_n_train,
+        ),
+        bayes_population_risk=bayes_population_risk,
+    )
     fig.savefig(run_dir / f"training_convergence_withBO__{suffix}.png", bbox_inches="tight")
     plt.close(fig)
 
-    fig, _ = plot_training_history(history,title=f"Training convergence\n{label}", bayes_population_risk=None)
+    fig, _ = plots.plot_training_history(
+        history,
+        title=plots.build_plot_title(
+            metric_title="Training convergence",
+            config=config,
+            actual_n_train=actual_n_train,
+        ),
+        bayes_population_risk=None,
+    )
     fig.savefig(run_dir / f"training_convergence__{suffix}.png", bbox_inches="tight")
     plt.close(fig)
 
+
 def run_experiment(config: dict) -> dict:
-    """Run one experiment and return all outputs."""
     seed = int(config["experiment"]["seed"])
     set_seeds(seed)
 
@@ -296,7 +346,7 @@ def run_experiment(config: dict) -> dict:
         del X_pop_np, mask_pop_np
 
         W = model.W.detach().cpu().numpy()
-        config_suffix = build_config_suffix(config, actual_n_train=actual_n_train)
+        config_suffix = plots.build_config_suffix(config, actual_n_train=actual_n_train)
 
         metrics, S, eigenvalues = compute_run_metrics(
             W=W,
@@ -345,13 +395,11 @@ def run_experiment(config: dict) -> dict:
 
 
 def save_experiment_outputs(results: dict, run_dir: Path) -> None:
-    """Save all outputs of one run."""
     suffix = results["config_suffix"]
     actual_n_train = results["actual_n_train"]
 
     save_json(results["config"], run_dir / f"config__{suffix}.json")
     save_json(results["metrics"], run_dir / f"metrics__{suffix}.json")
-    # save_json(results["history"], run_dir / f"history__{suffix}.json")
 
     save_run_arrays(
         run_dir=run_dir,
@@ -363,6 +411,7 @@ def save_experiment_outputs(results: dict, run_dir: Path) -> None:
     )
 
     torch.save(results["model_state_dict"], run_dir / f"model_state__{suffix}.pt")
+
     save_run_plots(
         run_dir=run_dir,
         S=results["S"],
@@ -376,16 +425,19 @@ def save_experiment_outputs(results: dict, run_dir: Path) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description="Run one SPOC masked-attention experiment.")
     parser.add_argument("--config", type=str, required=True, help="Path to yaml config file.")
     parser.add_argument("--alpha", type=float, default=None, help="Override alpha.")
-    parser.add_argument("--n-train",type=int, default=None, help="Override training set size. If provided, overrides alpha.")
+    parser.add_argument(
+        "--n-train",
+        type=int,
+        default=None,
+        help="Override training set size. If provided, overrides alpha.",
+    )
     parser.add_argument("--seed", type=int, default=None, help="Override random seed.")
     parser.add_argument("--save-root", type=str, default=None, help="Override save root directory.")
     parser.add_argument("--run-name", type=str, default=None, help="Override run name.")
     return parser.parse_args()
-
 
 
 def main() -> None:
@@ -394,12 +446,10 @@ def main() -> None:
     try:
         config = load_config(args.config)
 
-        # set save_root BEFORE validation
         if args.save_root is not None:
             config.setdefault("experiment", {})
             config["experiment"]["save_root"] = args.save_root
         else:
-            # if not provided in CLI and missing in config -> set default
             if "save_root" not in config.get("experiment", {}):
                 config_name = Path(args.config).stem
                 config.setdefault("experiment", {})
@@ -411,7 +461,7 @@ def main() -> None:
             alpha=args.alpha,
             n_train=args.n_train,
             seed=args.seed,
-            save_root=None,  # important: to avoid overriding what we just set
+            save_root=None,
             run_name=args.run_name,
         )
 
@@ -426,7 +476,6 @@ def main() -> None:
         print(f"[ERROR] Run failed for config: {args.config}")
         print(str(e))
         raise
-
 
 
 if __name__ == "__main__":
