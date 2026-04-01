@@ -325,6 +325,8 @@ def plot_training_history(
     history: dict[str, list[float]],
     title: str = "Training convergence",
     bayes_population_risk: float | None = None,
+    ridge_population_risk: float | None =None,
+    pca_population_risk: float | None =None,
 ) -> tuple[Figure, Axes]:
     fig, ax = plt.subplots(figsize=(11, 7.5))
 
@@ -361,9 +363,30 @@ def plot_training_history(
         ax.axhline(
             y=bayes_population_risk,
             linestyle="--",
-            linewidth=2.0,
+            linewidth=2.5,
+            alpha = 0.9,
             color="red",
             label="Bayes optimal risk",
+        )
+    # Ridge line
+    if ridge_population_risk is not None:
+        ax.axhline(
+            ridge_population_risk,
+            linestyle="-.",
+            linewidth=2,
+            alpha = 0.8,
+            color="blue",
+            label="Ridge (linear baseline)",
+        )
+
+    # PCA line
+    if pca_population_risk is not None:
+        ax.axhline(
+            pca_population_risk,
+            linestyle="-.",
+            linewidth=2,
+            color="deepskyblue",
+            label="PCA baseline",
         )
 
     ax.set_xlabel("Iteration")

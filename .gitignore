@@ -39,12 +39,10 @@ Thumbs.db
 results/**/*.npy
 results/**/*.pt
 
-experiments/logs/
-experiments/checkpoints/
-experiments/summaries/
 
 # Pytest
 .pytest_cache/
+
 
 # Temporary files
 *.tmp

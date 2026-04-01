@@ -46,6 +46,8 @@ from src.utils.wandb import (
     log_training_history,
 )
 import src.utils.plots as plots
+from src.baselines.ridge import fit_ridge_per_feature, evaluate_ridge
+from src.baselines.pca import fit_pca, evaluate_pca
 
 
 def set_seeds(seed: int) -> np.random.Generator:
@@ -141,6 +143,9 @@ def save_run_plots(
     config: dict,
     actual_n_train: int,
     bayes_population_risk: float | None = None,
+    ridge_population_risk: float | None = None,
+    pca_population_risk: float | None = None,
+
 ) -> None:
     suffix = plots.build_config_suffix(config, actual_n_train=actual_n_train)
 
@@ -188,6 +193,7 @@ def save_run_plots(
     fig.savefig(run_dir / f"sigma_heatmap__{suffix}.png", bbox_inches="tight")
     plt.close(fig)
 
+
     fig, _ = plots.plot_training_history(
         history,
         title=plots.build_plot_title(
@@ -196,8 +202,23 @@ def save_run_plots(
             actual_n_train=actual_n_train,
         ),
         bayes_population_risk=bayes_population_risk,
+        ridge_population_risk=ridge_population_risk,
+        pca_population_risk = pca_population_risk,
     )
-    fig.savefig(run_dir / f"training_convergence_withBO__{suffix}.png", bbox_inches="tight")
+    fig.savefig(run_dir / f"training_convergence_withBO_RR_PCA__{suffix}.png", bbox_inches="tight")
+    plt.close(fig)
+
+    fig, _ = plots.plot_training_history(
+        history,
+        title=plots.build_plot_title(
+            metric_title="Training convergence",
+            config=config,
+            actual_n_train=actual_n_train,
+        ),
+        bayes_population_risk=bayes_population_risk,
+        ridge_population_risk=ridge_population_risk,
+    )
+    fig.savefig(run_dir / f"training_convergence_withBO_RR__{suffix}.png", bbox_inches="tight")
     plt.close(fig)
 
     fig, _ = plots.plot_training_history(
@@ -282,6 +303,7 @@ def run_experiment(config: dict) -> dict:
 
     actual_n_train = int(X_train_t.shape[0])
 
+    # generate population data for test eval
     n_population = int(config["evaluation"]["n_population"])
     X_pop_t, X_tilde_pop_t, mask_pop_t = generate_single_mask_dataset_torch(
         n_samples=n_population,
@@ -340,10 +362,48 @@ def run_experiment(config: dict) -> dict:
         else:
             bayes_population_risk = bayes_population_risk_last_mask(sigma_np)
 
+        # numpy versions for ridge, bayes, pca
+        X_train_np = X_train_t.detach().cpu().numpy()
+        mask_train_np = mask_train_t.detach().cpu().numpy()
         X_pop_np = X_pop_t.detach().cpu().numpy()
         mask_pop_np = mask_pop_t.detach().cpu().numpy()
         empirical_bayes_risk = bayes_population_risk_empirical(X_pop_np, sigma_np, mask_pop_np)
-        del X_pop_np, mask_pop_np
+
+        # ridge
+        ridge_lambda = 1e-2
+        ridge_weights = fit_ridge_per_feature(X_train_np, lambda_reg=ridge_lambda)
+        ridge_train_loss = evaluate_ridge(
+            X=X_train_np,
+            mask_indices=mask_train_np,
+            weights_by_token=ridge_weights,
+        )
+        ridge_population_risk = evaluate_ridge(
+            X=X_pop_np,
+            mask_indices=mask_pop_np,
+            weights_by_token=ridge_weights,
+        )
+        ridge_generalization_gap = float(ridge_population_risk - ridge_train_loss)
+        ridge_excess_population_risk = float(ridge_population_risk - bayes_population_risk)
+
+        # pca
+        Td = T * d
+        pca_n_components = min(75, Td//2)
+        pca_model = fit_pca(X_train_np, n_components=pca_n_components)
+        pca_train_loss = evaluate_pca(
+            X=X_train_np,
+            mask_indices=mask_train_np,
+            pca_model=pca_model,
+        )
+        pca_population_risk = evaluate_pca(
+            X=X_pop_np,
+            mask_indices=mask_pop_np,
+            pca_model=pca_model,
+        )
+        pca_generalization_gap = float(pca_population_risk - pca_train_loss)
+        pca_excess_population_risk = float(pca_population_risk - bayes_population_risk)
+
+        # delete to save RAM
+        del X_pop_np, mask_pop_np, X_train_np, mask_train_np
 
         W = model.W.detach().cpu().numpy()
         config_suffix = plots.build_config_suffix(config, actual_n_train=actual_n_train)
@@ -364,6 +424,20 @@ def run_experiment(config: dict) -> dict:
             n_steps=n_steps,
             config_suffix=config_suffix,
         )
+
+        # add metrics for ridge and pca
+        metrics["ridge_lambda"] = float(ridge_lambda)
+        metrics["ridge_train_loss"] = float(ridge_train_loss)
+        metrics["ridge_population_risk"] = float(ridge_population_risk)
+        metrics["ridge_generalization_gap"] = ridge_generalization_gap
+        metrics["ridge_excess_population_risk"] = ridge_excess_population_risk
+        metrics["pca_n_components"] = int(pca_n_components)
+        metrics["pca_train_loss"] = float(pca_train_loss)
+        metrics["pca_population_risk"] = float(pca_population_risk)
+        metrics["pca_generalization_gap"] = pca_generalization_gap
+        metrics["pca_excess_population_risk"] = pca_excess_population_risk
+        metrics["pca_n_components"] = int(pca_n_components)
+
 
         log_training_history(
             wandb_module=wandb_module,
@@ -411,7 +485,6 @@ def save_experiment_outputs(results: dict, run_dir: Path) -> None:
     )
 
     torch.save(results["model_state_dict"], run_dir / f"model_state__{suffix}.pt")
-
     save_run_plots(
         run_dir=run_dir,
         S=results["S"],
@@ -421,6 +494,8 @@ def save_experiment_outputs(results: dict, run_dir: Path) -> None:
         config=results["config"],
         actual_n_train=actual_n_train,
         bayes_population_risk=results["metrics"]["bayes_population_risk"],
+        ridge_population_risk=results["metrics"].get("ridge_population_risk"),
+        pca_population_risk=results["metrics"].get("pca_population_risk"),
     )
 
 

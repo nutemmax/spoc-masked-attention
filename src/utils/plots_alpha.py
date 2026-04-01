@@ -137,6 +137,10 @@ def format_metric_name(metric: str) -> str:
         "effective_rank": "Effective Rank",
         "alpha": r"$\alpha$",
         "n_train": r"$n_{\mathrm{train}}$",
+        "ridge_train_loss": "Ridge Train Loss",
+        "ridge_population_risk": "Ridge Population Risk",
+        "ridge_generalization_gap": "Ridge Generalization Gap",
+        "ridge_excess_population_risk": "Ridge Excess Population Risk",
     }
     return mapping.get(metric, metric.replace("_", " ").title())
 
@@ -468,6 +472,17 @@ def build_zoom_plot_filename(
     right = x_max if x_max is not None else "max"
     return f"train_vs_population_vs_bayes_n_train_zoom_{left}_{right}.png"
 
+def build_zoom_plot_ridge_filename(
+    x_min: int | None,
+    x_max: int | None,
+) -> str:
+    if x_min is None and x_max is None:
+        return "train_vs_population_vs_bayes_vs_ridge_n_train_full.png"
+    left = x_min if x_min is not None else 0
+    right = x_max if x_max is not None else "max"
+    return f"train_vs_population_vs_bayes_vs_ridge_n_train_zoom_{left}_{right}.png"
+
+
 
 def save_zoomed_train_vs_population_vs_bayes_plot(
     df: pd.DataFrame,
@@ -530,6 +545,104 @@ def save_zoomed_train_vs_population_vs_bayes_plot(
     fig.savefig(output_path, bbox_inches="tight")
     plt.close(fig)
 
+
+def save_zoomed_train_vs_population_vs_bayes_vs_ridge_plot(
+    df: pd.DataFrame,
+    output_path: Path,
+    config_label: str = "",
+    x_min: int | None = None,
+    x_max: int | None = None,
+) -> None:
+    if "n_train" not in df.columns:
+        return
+
+    base_cols = ["n_train", "train_loss", "population_risk"]
+    extra_cols = []
+    if "ridge_population_risk" in df.columns:
+        extra_cols.append("ridge_population_risk")
+
+    data = df[base_cols + extra_cols].copy()
+    data = data.dropna(subset=["n_train", "train_loss", "population_risk"])
+    data["n_train"] = pd.to_numeric(data["n_train"], errors="coerce")
+    data["train_loss"] = pd.to_numeric(data["train_loss"], errors="coerce")
+    data["population_risk"] = pd.to_numeric(data["population_risk"], errors="coerce")
+    if "ridge_population_risk" in data.columns:
+        data["ridge_population_risk"] = pd.to_numeric(data["ridge_population_risk"], errors="coerce")
+
+    data = data.dropna(subset=["n_train", "train_loss", "population_risk"])
+    data = data.sort_values("n_train")
+
+    if x_min is not None:
+        data = data[data["n_train"] >= x_min]
+    if x_max is not None:
+        data = data[data["n_train"] <= x_max]
+
+    if data.empty:
+        return
+
+    bayes_risk = get_bayes_risk(df)
+
+    fig, ax = plt.subplots(figsize=(10.5, 7.2))
+    ax.plot(
+        data["n_train"],
+        data["train_loss"],
+        marker="o",
+        linewidth=2.2,
+        markersize=7,
+        alpha = 0.9,
+        # color = "limegreen",
+        label="Attention Train Loss",
+    )
+    ax.plot(
+        data["n_train"],
+        data["population_risk"],
+        marker="s",
+        linewidth=2.2,
+        markersize=7,
+        alpha = 0.9,
+        # color = "blue",
+        label="Attention Population Risk",
+    )
+
+    if "ridge_population_risk" in data.columns:
+        ax.plot(
+            data["n_train"],
+            data["ridge_population_risk"],
+            marker="d",
+            linewidth=1.5,
+            linestyle="--",
+            # color = "deepskyblue",
+            # alpha = 0.3,
+            markersize=6,
+            label="Ridge Population Risk",
+        )
+
+    if bayes_risk is not None:
+        ax.axhline(
+            y=bayes_risk,
+            linestyle=":",
+            linewidth=3,
+            color="red",
+            label="Bayes Optimal Risk",
+        )
+
+    ax.set_xlabel(r"$n_{\mathrm{train}}$")
+    ax.set_ylabel("Risk")
+
+    if x_min is None and x_max is None:
+        title_line = r"Attention, Ridge, and Bayes vs $n_{\mathrm{train}}$"
+    else:
+        left = x_min if x_min is not None else 0
+        right = x_max if x_max is not None else "max"
+        title_line = rf"Attention, Ridge, and Bayes vs $n_{{\mathrm{{train}}}}$ (zoom: {left} to {right})"
+
+    full_title = title_line if not config_label else title_line + "\n" + config_label
+    set_multiline_title(ax, full_title)
+    ax.legend(frameon=True)
+
+    fig.tight_layout()
+    fig.savefig(output_path, bbox_inches="tight")
+    plt.close(fig)
 
 # =========================
 # eigenvalue summary stats
@@ -661,6 +774,85 @@ def save_eigenvalue_metric_vs_ntrain_plot(
     plt.close(fig)
 
 
+def save_attention_vs_ridge_vs_bayes_plot(
+    df: pd.DataFrame,
+    x_col: str,
+    output_path: Path,
+    config_label: str = "",
+) -> None:
+    required_cols = {
+        x_col,
+        "train_loss",
+        "population_risk",
+        "ridge_train_loss",
+        "ridge_population_risk",
+        "bayes_population_risk",
+    }
+    if not required_cols.issubset(df.columns):
+        return
+
+    plot_df = df[
+        [x_col, "train_loss", "population_risk", "ridge_train_loss", "ridge_population_risk", "bayes_population_risk"]
+    ].dropna().copy()
+    if plot_df.empty:
+        return
+
+    plot_df = plot_df.sort_values(by=x_col)
+    bayes_level = plot_df["bayes_population_risk"].mean()
+
+    fig, ax = plt.subplots(figsize=(10.8, 7.4))
+
+    ax.plot(
+        plot_df[x_col],
+        plot_df["train_loss"],
+        marker="o",
+        linewidth=2,
+        label="Attention Train Loss",
+    )
+    ax.plot(
+        plot_df[x_col],
+        plot_df["population_risk"],
+        marker="s",
+        linewidth=2,
+        label="Attention Population Risk",
+    )
+    ax.plot(
+        plot_df[x_col],
+        plot_df["ridge_train_loss"],
+        marker="^",
+        linewidth=2,
+        linestyle="--",
+        label="Ridge Train Loss",
+    )
+    ax.plot(
+        plot_df[x_col],
+        plot_df["ridge_population_risk"],
+        marker="d",
+        linewidth=2,
+        linestyle="--",
+        label="Ridge Population Risk",
+    )
+    ax.axhline(
+        y=bayes_level,
+        linestyle=":",
+        linewidth=2,
+        color="red",
+        label="Bayes Optimal Risk",
+    )
+
+    ax.set_xlabel(format_x_label(x_col))
+    ax.set_ylabel("Risk")
+
+    title_line = f"Attention vs Ridge vs Bayes vs {format_x_label(x_col)}"
+    full_title = title_line if not config_label else title_line + "\n" + config_label
+    set_multiline_title(ax, full_title)
+    ax.legend(frameon=True)
+
+    fig.tight_layout()
+    fig.savefig(output_path, bbox_inches="tight")
+    plt.close(fig)
+
+
 # =========================
 # high-level generation
 # =========================
@@ -694,8 +886,12 @@ def generate_summary_plots(
     metrics_to_plot = [
         "train_loss",
         "population_risk",
+        "ridge_train_loss",
+        "ridge_population_risk",
         "generalization_gap",
         "excess_population_risk",
+        "ridge_generalization_gap",
+        "ridge_excess_population_risk",
         "weight_norm",
         "trace_s",
         "top_eigenvalue",
@@ -756,6 +952,13 @@ def generate_summary_plots(
         config_label=config_label,
     )
 
+    save_attention_vs_ridge_vs_bayes_plot(
+        df=df,
+        x_col=sweep_key,
+        output_path=plots_dir / f"attention_vs_ridge_vs_bayes_{sweep_key}.png",
+        config_label=config_label,
+    )
+
     save_train_vs_population_vs_bayes_plot(
         df=df,
         x_col=sweep_key,
@@ -775,8 +978,8 @@ def generate_summary_plots(
             zoom_ranges = [(None, None), (0,500), (0, 1000), (0, 2000)]
 
         for x_min, x_max in zoom_ranges:
-            filename = build_zoom_plot_filename(x_min, x_max)
-            save_zoomed_train_vs_population_vs_bayes_plot(
+            filename = build_zoom_plot_ridge_filename(x_min, x_max)
+            save_zoomed_train_vs_population_vs_bayes_vs_ridge_plot(
                 df=df,
                 output_path=plots_dir / filename,
                 config_label=config_label,
@@ -811,6 +1014,11 @@ def expected_plot_paths(
         f"generalization_gap_vs_{sweep_key}_with_zero.png",
         f"excess_population_risk_vs_{sweep_key}_with_zero.png",
         f"train_vs_population_vs_bayes_{sweep_key}.png",
+        f"attention_vs_ridge_vs_bayes_{sweep_key}.png",
+        f"ridge_train_loss_vs_{sweep_key}.png",
+        f"ridge_population_risk_vs_{sweep_key}.png",
+        f"ridge_generalization_gap_vs_{sweep_key}.png",
+        f"ridge_excess_population_risk_vs_{sweep_key}.png",
     ]
 
     if sweep_key == "alpha":
@@ -818,9 +1026,10 @@ def expected_plot_paths(
 
     if sweep_key == "n_train":
         names.extend([
-            "train_vs_population_vs_bayes_n_train_full.png",
-            "train_vs_population_vs_bayes_n_train_zoom_0_1000.png",
-            "train_vs_population_vs_bayes_n_train_zoom_0_2000.png",
+            "train_vs_population_vs_bayes_vs_ridge_n_train_full.png",
+            "train_vs_population_vs_bayes_vs_ridge_n_train_zoom_0_500.png",
+            "train_vs_population_vs_bayes_vs_ridge_n_train_zoom_0_1000.png",
+            "train_vs_population_vs_bayes_vs_ridge_n_train_zoom_0_2000.png",
         ])
 
     return [plots_dir / name for name in names]

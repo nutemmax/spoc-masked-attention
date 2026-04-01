@@ -194,6 +194,10 @@ def write_summary_csv(rows: list[dict], path: Path) -> None:
         "empirical_bayes_risk",
         "generalization_gap",
         "excess_population_risk",
+        "ridge_train_loss",
+        "ridge_population_risk",
+        "ridge_generalization_gap",
+        "ridge_excess_population_risk",
         "runtime_seconds",
         "runtime_per_step_seconds",
         "initial_objective",
@@ -278,7 +282,7 @@ def aggregate_one_sweep(sweep_dir: Path, force: bool = False) -> None:
     generate_summary_plots(
         sweep_dir=sweep_dir,
         sweep_key=sweep_key,
-        zoom_ranges=[(None, None), (0, 1000), (0, 2000)],
+        zoom_ranges=[(None, None), (0,500), (0, 1000), (0, 2000)],
     )
 
     print(f"[done] Aggregated {sweep_dir} (sweep key: {sweep_key})")

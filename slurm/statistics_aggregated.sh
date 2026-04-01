@@ -1,4 +1,5 @@
 # SWEEP_ROOT="results/mask-last/"
+# SWEEP_ROOT="results/mask-random/covariance_experiments/"
 SWEEP_ROOT="results/mask-random/test/"
 
 # ====== SETUP ======

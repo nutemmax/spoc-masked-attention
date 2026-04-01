@@ -1,22 +1,19 @@
 #!/bin/bash
-#SBATCH --job-name=identity
-#SBATCH --output=logs/ntrain_%A_%a.out
-#SBATCH --error=logs/ntrain_%A_%a.err
+#SBATCH --job-name=cov_tnn
+#SBATCH --output=logs/cov_experiments_%A_%a.out
+#SBATCH --error=logs/cov_experiments_%A_%a.err
 #SBATCH --partition=academic
-#SBATCH --time=12:00:00
-#SBATCH --cpus-per-task=1
+#SBATCH --time=24:00:00
+#SBATCH --cpus-per-task=4
 #SBATCH --mail-user=emma.anastassova@epfl.ch
 #SBATCH --mail-type=FAIL
-#SBATCH --mem=4G
-#SBATCH --array=0-5
+#SBATCH --mem=20G
+#SBATCH --array=0-25%13
 
-# for the other one, 0-22, else 0-7, or 0-31
 
 set -euo pipefail
-
 # CONFIG_PATH=$1
-# comment out
-CONFIG_PATH="/home/anastass/spoc-masked-attention/configs/numerics-maskrandom/cov_tridiagonal_maskrandom_rho0_lambda1e-05_beta1_d25_T5_lr0p001_iter5000.yaml"
+CONFIG_PATH="/home/anastass/spoc-masked-attention/configs/maskrandom/iter1000/cov_toeplitz_maskrandom_rho0p9_lambda1e-05_beta1_d50_T5_lr0p001_iter1000.yaml"
 
 ITERS=$(python - <<EOF
 import yaml
@@ -53,14 +50,11 @@ EOF
 # ====== CONFIG ======
 CONFIG_NAME=$(basename "$CONFIG_PATH" .yaml)
 SWEEP_TIMESTAMP=${SLURM_ARRAY_JOB_ID:-$SLURM_JOB_ID}
+# SWEEP_DIR_REL="results/mask-${MASKING_STRATEGY}/covariance_experiments/iter_${ITERS}/${CONFIG_NAME}/${CONFIG_NAME}_${SWEEP_TIMESTAMP}"
 SWEEP_DIR_REL="results/mask-${MASKING_STRATEGY}/test/iter_${ITERS}/${CONFIG_NAME}/${CONFIG_NAME}_${SWEEP_TIMESTAMP}"
 SEED=42
-# NTRAIN_CSV="10,50,100,150,200,250,300,400,500,750,1000,1250,1500,2000,2500,3000,4000,5000,6000,7000,8000,9000,10000"
-# NTRAIN_CSV="10,50,100,500,1000,2000,5000,10000"
-# NTRAIN_CSV="10,20,30,40,50,75,100,125,150,175,200,250,300,400,500,750,1000,1250,1500,1750,2000,2250,2500,3000,4000,5000,6000,7000,8000,9000,10000"
-# NTRAIN_CSV="10,20,30,40,50,75,100,125,150,175,200,250,300,400,500,750,1000,1250,1500,1750,2000,2500,5000,10000"
+NTRAIN_CSV="10,20,30,40,50,60,70,80,90,100,125,150,175,200,250,300,400,500,750,1000,1250,1500,1750,2000,2500,5000"
 
-NTRAIN_CSV="10,50,100,500,1000,2000"
 
 # ====== SETUP ======
 PROJECT_DIR=/home/anastass/spoc-masked-attention
@@ -90,7 +84,7 @@ echo "Running config=$CONFIG_NAME n_train=$NTRAIN (task $TASK_ID)"
 echo "Saving under: $SWEEP_DIR_REL"
 
 # ====== RUN ======
-python -u scripts/run_experiment_new.py \
+python -u scripts/run_experiment.py \
   --config "$CONFIG_PATH" \
   --n-train "$NTRAIN" \
   --seed "$SEED" \
