@@ -40,6 +40,8 @@ results/**/*.npy
 results/**/*.pt
 overleaf/**/*.npy
 overleaf/**/*.pt
+overleaf/**/*.csv
+overleaf/**/*.json
 *.npy
 *.pt
 
