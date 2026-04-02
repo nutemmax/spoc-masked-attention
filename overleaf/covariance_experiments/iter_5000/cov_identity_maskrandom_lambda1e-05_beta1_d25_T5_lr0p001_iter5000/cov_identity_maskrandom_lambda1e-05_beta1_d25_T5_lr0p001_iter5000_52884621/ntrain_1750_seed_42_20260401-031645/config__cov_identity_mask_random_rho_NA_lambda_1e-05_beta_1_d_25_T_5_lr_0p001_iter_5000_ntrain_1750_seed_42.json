@@ -1,0 +1,38 @@
+{
+  "experiment": {
+    "save_root": "results/mask-random/test/iter_5000/cov_identity_maskrandom_lambda1e-05_beta1_d25_T5_lr0p001_iter5000/cov_identity_maskrandom_lambda1e-05_beta1_d25_T5_lr0p001_iter5000_52884621",
+    "run_name": null,
+    "seed": 42
+  },
+  "data": {
+    "T": 5,
+    "d": 25,
+    "covariance_type": "identity",
+    "rho": null,
+    "length_scale": null,
+    "eta": null,
+    "mask_value": 1.0,
+    "masking_strategy": "random"
+  },
+  "model": {
+    "r": 25,
+    "beta": 1.0,
+    "normalize_sqrt_d": true,
+    "dtype": "float64",
+    "device": "cpu"
+  },
+  "training": {
+    "alpha": 1.0,
+    "n_steps": 5000,
+    "learning_rate": 0.001,
+    "lambda_reg": 1e-05,
+    "n_train": 1750
+  },
+  "evaluation": {
+    "n_population": 5000
+  },
+  "logging": {
+    "use_wandb": true,
+    "project": "spoc-masked-attention"
+  }
+}
