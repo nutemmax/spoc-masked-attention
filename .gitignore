@@ -38,7 +38,10 @@ Thumbs.db
 # Experiment outputs
 results/**/*.npy
 results/**/*.pt
-
+overleaf/**/*.npy
+overleaf/**/*.pt
+*.npy
+*.pt
 
 # Pytest
 .pytest_cache/
