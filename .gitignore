@@ -43,6 +43,10 @@ overleaf/**/*.pt
 overleaf/**/*.csv
 overleaf/**/*.json
 overleaf/**/ntrain_*/
+overleaf/**/**/ntrain_*/
+overleaf/**/**/**/ntrain_*/
+overleaf/**/**/**/**/ntrain_*/
+overleaf/**/**/**/**/**/ntrain_*/
 *.npy
 *.pt
 
