@@ -42,6 +42,7 @@ overleaf/**/*.npy
 overleaf/**/*.pt
 overleaf/**/*.csv
 overleaf/**/*.json
+overleaf/**/ntrain_*/
 *.npy
 *.pt
 
