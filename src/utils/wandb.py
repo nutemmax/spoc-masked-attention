@@ -148,6 +148,11 @@ def build_wandb_tags(config: dict) -> list[str]:
     data_cfg = config.get("data", {})
     model_cfg = config.get("model", {})
     training_cfg = config.get("training", {})
+    teacher_cfg = config.get("teacher", {})
+
+    data_model = data_cfg.get("data_model")
+    if data_model is not None:
+        tags.append(f"data:{data_model}")
 
     masking_strategy = data_cfg.get("masking_strategy")
     if masking_strategy is not None:
@@ -165,17 +170,44 @@ def build_wandb_tags(config: dict) -> list[str]:
     if beta is not None:
         tags.append(f"beta:{beta}")
 
+    teacher_init = teacher_cfg.get("init")
+    if teacher_init is not None:
+        tags.append(f"teacher_init:{teacher_init}")
+
+    r_star = teacher_cfg.get("r_star")
+    if r_star is not None:
+        tags.append(f"r_star:{r_star}")
+
+    beta_star = teacher_cfg.get("beta_star")
+    if beta_star is not None:
+        tags.append(f"beta_star:{beta_star}")
+
+    sigma_star = teacher_cfg.get("sigma_star")
+    if sigma_star is not None:
+        tags.append(f"sigma_star:{sigma_star}")
+
     lambda_reg = training_cfg.get("lambda_reg")
     if lambda_reg is not None:
         tags.append(f"lambda:{lambda_reg}")
 
     tags.append("sweep" if is_sweep_run(config) else "single")
 
+    T = data_cfg.get("T")
+    if T is not None:
+        tags.append(f"T:{T}")
+
+    d = data_cfg.get("d")
+    if d is not None:
+        tags.append(f"d:{d}")
+
+    r = model_cfg.get("r")
+    if r is not None:
+        tags.append(f"r:{r}")
+
     if os.getenv("SLURM_JOB_ID") is not None or os.getenv("SLURM_ARRAY_JOB_ID") is not None:
         tags.append("slurm")
 
     return tags
-
 
 def init_wandb_if_enabled(
     config: dict,
@@ -217,38 +249,49 @@ def init_wandb_if_enabled(
 
     return wandb
 
-
 def log_training_history(
     wandb_module,
     history: dict[str, list[float]],
     eval_every: int,
 ) -> None:
+    _ = eval_every # currently unused, but could be used in the future to validate that eval steps are logged at the expected intervals
     if wandb_module is None:
         return
 
     objective = history.get("objective", [])
     train_loss = history.get("train_loss", [])
-    test_loss = history.get("test_loss", [])
+    eval_steps = history.get("steps", [])
 
     n_steps = len(objective)
 
-    eval_map: dict[int, dict[str, float]] = {}
-    n_eval = max(len(train_loss), len(test_loss))
+    eval_keys = [
+        key
+        for key in history.keys()
+        if key not in {"objective", "train_loss", "steps"}
+    ]
 
-    for i in range(n_eval):
-        step = (i + 1) * eval_every
+    eval_map: dict[int, dict[str, float]] = {}
+
+    for i, step_value in enumerate(eval_steps):
+        step = int(step_value)
         payload: dict[str, float] = {}
 
-        if i < len(train_loss):
-            payload["train_loss_eval"] = float(train_loss[i])
-        if i < len(test_loss):
-            payload["test_loss_eval"] = float(test_loss[i])
+        for key in eval_keys:
+            values = history.get(key, [])
+            if i < len(values):
+                payload[key] = float(values[i])
 
         eval_map[step] = payload
 
     for step_idx in range(n_steps):
         step = step_idx + 1
-        payload = {"objective": float(objective[step_idx])}
+        payload: dict[str, float] = {}
+
+        if step_idx < len(objective):
+            payload["objective"] = float(objective[step_idx])
+
+        if step_idx < len(train_loss):
+            payload["train_loss"] = float(train_loss[step_idx])
 
         if step in eval_map:
             payload.update(eval_map[step])

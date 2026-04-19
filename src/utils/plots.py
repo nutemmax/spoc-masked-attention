@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -123,6 +122,112 @@ def format_masking_label(masking_strategy: str | None) -> str:
 
     mask = str(masking_strategy).replace("_", "-")
     return f"Mask={mask}"
+
+def format_teacher_label(teacher_cfg: dict | None) -> str:
+    if teacher_cfg is None:
+        return "Teacher=NA"
+
+    init = str(teacher_cfg.get("init", "NA")).replace("_", "-")
+    r_star = teacher_cfg.get("r_star", "NA")
+    if r_star is None:
+        r_star = "d"
+    beta_star = teacher_cfg.get("beta_star", None)
+    sigma_star = teacher_cfg.get("sigma_star", None)
+
+    parts = [
+        rf"$W^\star$: {init}",
+        rf"$r^\star = {r_star}$",
+    ]
+
+    if beta_star is not None:
+        parts.append(rf"$\beta^\star = {format_float_for_title(beta_star)}$")
+    if sigma_star is not None:
+        parts.append(rf"$\sigma^\star = {format_float_for_title(sigma_star)}$")
+
+    return ", ".join(parts)
+
+
+def format_teacher_attention_config_label(
+    config: dict | None,
+    actual_n_train: int | None = None,
+    include_seed: bool = True,
+) -> str:
+    if config is None:
+        return ""
+
+    data_cfg = config.get("data", {})
+    model_cfg = config.get("model", {})
+    teacher_cfg = config.get("teacher", {})
+    training_cfg = config.get("training", {})
+    exp_cfg = config.get("experiment", {})
+
+    masking_strategy = data_cfg.get("masking_strategy", "NA")
+    lambda_reg = training_cfg.get("lambda_reg", None)
+    beta = model_cfg.get("beta", None)
+    d = data_cfg.get("d", None)
+    T = data_cfg.get("T", None)
+    r = model_cfg.get("r", None)
+    lr = training_cfg.get("learning_rate", None)
+    n_steps = training_cfg.get("n_steps", None)
+    seed = exp_cfg.get("seed", None)
+
+    line1_parts = [
+        format_teacher_label(teacher_cfg),
+        format_masking_label(masking_strategy),
+    ]
+
+    if lambda_reg is not None:
+        line1_parts.append(rf"$\lambda = {format_float_for_title(lambda_reg)}$")
+    if beta is not None:
+        line1_parts.append(rf"$\beta = {format_float_for_title(beta)}$")
+
+    line1 = ", ".join(line1_parts)
+
+    if actual_n_train is not None:
+        size_part = rf"$n_{{\mathrm{{train}}}} = {actual_n_train}$"
+    else:
+        n_train_cfg = training_cfg.get("n_train", None)
+        if n_train_cfg is not None:
+            size_part = rf"$n_{{\mathrm{{train}}}} = {int(n_train_cfg)}$"
+        else:
+            alpha = training_cfg.get("alpha", None)
+            size_part = rf"$\alpha = {format_float_for_title(alpha)}$"
+
+    line2_parts = []
+    if d is not None:
+        line2_parts.append(rf"$d = {d}$")
+    if T is not None:
+        line2_parts.append(rf"$T = {T}$")
+    if r is not None:
+        line2_parts.append(rf"$r = {r}$")
+    if lr is not None:
+        line2_parts.append(rf"$\eta = {format_float_for_title(lr)}$")
+    if n_steps is not None:
+        line2_parts.append(rf"$\mathrm{{iters}} = {n_steps}$")
+
+    line2_parts.append(size_part)
+
+    if include_seed and seed is not None:
+        line2_parts.append(rf"$\mathrm{{seed}} = {int(seed)}$")
+
+    line2 = ", ".join(line2_parts)
+
+    return f"{line1}\n{line2}" if line2 else line1
+
+
+def build_teacher_attention_plot_title(
+    metric_title: str,
+    config: dict,
+    actual_n_train: int | None = None,
+) -> str:
+    config_label = format_teacher_attention_config_label(
+        config,
+        actual_n_train=actual_n_train,
+        include_seed=True,
+    )
+    if config_label:
+        return f"{metric_title}\n{config_label}"
+    return metric_title
 
 
 def format_config_label(
@@ -282,6 +387,7 @@ def plot_eigenvalues(
     return fig, ax
 
 
+
 def plot_eigenvalue_histogram(
     eigvals: np.ndarray,
     bins: int = 30,
@@ -311,6 +417,47 @@ def plot_eigenvalue_histogram(
     return fig, ax
 
 
+def plot_eigenvalues_comparison(
+    eigvals: np.ndarray,
+    eigvals_star: np.ndarray,
+    title: str = r"Sorted eigenvalues of $S$ and $S^\star$",
+    use_log_y: bool = False,
+) -> tuple[Figure, Axes]:
+    eigvals_sorted = np.sort(np.asarray(eigvals).reshape(-1))[::-1]
+    eigvals_star_sorted = np.sort(np.asarray(eigvals_star).reshape(-1))[::-1]
+
+    fig, ax = plt.subplots(figsize=(10.5, 6.5))
+
+    ax.plot(
+        np.arange(1, len(eigvals_sorted) + 1),
+        eigvals_sorted,
+        marker="o",
+        linewidth=2.2,
+        markersize=7,
+        label=r"Learned $S$",
+    )
+
+    ax.plot(
+        np.arange(1, len(eigvals_star_sorted) + 1),
+        eigvals_star_sorted,
+        marker="s",
+        linewidth=2.2,
+        markersize=6,
+        label=r"Teacher $S^\star$",
+    )
+
+    ax.set_xlabel(r"Rank $i$")
+    ax.set_ylabel(r"$\lambda_i$")
+
+    if use_log_y:
+        ax.set_yscale("log")
+
+    set_multiline_title(ax, title)
+    ax.legend(frameon=True)
+    fig.tight_layout()
+    return fig, ax
+
+
 def plot_matrix_heatmap(matrix: np.ndarray, title: str) -> tuple[Figure, Axes]:
     fig, ax = plt.subplots(figsize=(8.5, 7))
     im = ax.imshow(matrix, aspect="auto")
@@ -327,6 +474,7 @@ def plot_training_history(
     bayes_population_risk: float | None = None,
     ridge_population_risk: float | None =None,
     pca_population_risk: float | None =None,
+    show_objective: bool = True,
 ) -> tuple[Figure, Axes]:
     fig, ax = plt.subplots(figsize=(11, 7.5))
 
@@ -343,7 +491,7 @@ def plot_training_history(
             linewidth=2.2,
         )
 
-    if len(objective) > 0:
+    if len(objective) > 0 and show_objective:
         ax.plot(
             range(1, len(objective) + 1),
             objective,
@@ -396,3 +544,69 @@ def plot_training_history(
     # ax.grid(True, alpha=0.3)
     fig.tight_layout()
     return fig, ax
+
+
+def plot_eval_metric_history(
+    history: dict[str, list[float]],
+    metric_key: str,
+    ylabel: str,
+    title: str,
+) -> tuple[Figure, Axes]:
+    eval_steps = history.get("steps", [])
+    values = history.get(metric_key, [])
+
+    if len(values) == 0:
+        raise ValueError(f"Metric '{metric_key}' not found in history.")
+    if len(eval_steps) != len(values):
+        raise ValueError("eval_steps and metric values must have the same length.")
+
+    fig, ax = plt.subplots(figsize=(11, 7.5))
+    ax.plot(
+        eval_steps,
+        values,
+        marker="o",
+        linewidth=2.2,
+        markersize=6,
+    )
+
+    ax.set_xlabel("Iteration")
+    ax.set_ylabel(ylabel)
+    set_multiline_title(ax, title)
+    fig.tight_layout()
+    return fig, ax
+
+
+def plot_teacher_recovery_history(
+    history: dict[str, list[float]],
+    title_prefix: str = "Teacher recovery",
+) -> list[tuple[str, Figure]]:
+    figures: list[tuple[str, Figure]] = []
+
+    if "cosine_S_S_star" in history:
+        fig, _ = plot_eval_metric_history(
+            history=history,
+            metric_key="cosine_S_S_star",
+            ylabel=r"$\cos(S,S^\star)$",
+            title=f"{title_prefix}: cosine similarity",
+        )
+        figures.append(("cosine_S_S_star", fig))
+
+    if "relative_error_S_S_star" in history:
+        fig, _ = plot_eval_metric_history(
+            history=history,
+            metric_key="relative_error_S_S_star",
+            ylabel=r"$\|S-S^\star\|_F / \|S^\star\|_F$",
+            title=f"{title_prefix}: relative Frobenius error",
+        )
+        figures.append(("relative_error_S_S_star", fig))
+
+    if "attention_level_error" in history:
+        fig, _ = plot_eval_metric_history(
+            history=history,
+            metric_key="attention_level_error",
+            ylabel=r"$\|A_S(\widetilde X)-A_{S^\star}(G)\|_F^2/T^2$",
+            title=f"{title_prefix}: attention-level error",
+        )
+        figures.append(("attention_level_error", fig))
+
+    return figures

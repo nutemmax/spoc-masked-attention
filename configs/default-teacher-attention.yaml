@@ -1,0 +1,41 @@
+experiment:
+  save_root: results/teacher-attention/
+  run_name: null
+  seed: 0
+
+data:
+  data_model: teacher_attention
+  T: 5
+  d: 50
+  mask_value: 1.0
+  masking_strategy: random
+
+teacher:
+  init: standard_gaussian
+  r_star: null
+  beta_star: 1.0
+  sigma_star: 1.0
+
+model:
+  r: 50
+  beta: 1.0
+  normalize_sqrt_d: true
+  dtype: float64
+  device: cpu
+
+training:
+  n_train: 1000
+  alpha: null
+  n_steps: 5000
+  learning_rate: 0.001
+  lambda_reg: 1.0e-5
+
+evaluation:
+  n_population: 5000
+  eval_every: 5
+  track_attention_error_during_training: true
+  attention_metric_subset_size: 32
+  pca_n_components: 50
+
+logging:
+  use_wandb: false

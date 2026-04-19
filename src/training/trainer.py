@@ -2,6 +2,7 @@ from __future__ import annotations
 import torch
 from torch import Tensor
 from tqdm.auto import tqdm
+from collections.abc import Callable
 from src.training.losses import reconstruction_loss, regularized_training_objective
 
 
@@ -49,6 +50,7 @@ def fit(
     eval_every: int = 25,
     show_progress: bool = True,
     print_every: int | None = None,
+    extra_eval_fn: Callable[[object], dict[str, float]] | None = None,
 ) -> dict[str, list[float]]:
     """Train the model for a fixed number of steps."""
     if n_steps <= 0:
@@ -61,6 +63,7 @@ def fit(
         raise ValueError("eval_every must be positive.")
 
     do_eval = X_tilde_eval is not None and X_eval is not None and mask_eval is not None
+    do_extra_eval = extra_eval_fn is not None
 
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
@@ -88,12 +91,20 @@ def fit(
         history["train_loss"].append(recon_value)
 
         should_eval = ((step + 1) % eval_every == 0) or (step == 0) or (step == n_steps - 1)
-
-        if do_eval and should_eval:
-            test_loss_value = evaluate_reconstruction_loss(model, X_tilde_eval, X_eval, mask_eval)
+        if should_eval and (do_eval or do_extra_eval):
             history["steps"].append(step + 1)
-            history["test_loss"].append(test_loss_value)
-            history["generalization_gap"].append(test_loss_value - recon_value)
+
+            if do_eval:
+                test_loss_value = evaluate_reconstruction_loss(model, X_tilde_eval, X_eval, mask_eval)
+                history["test_loss"].append(test_loss_value)
+                history["generalization_gap"].append(test_loss_value - recon_value)
+
+            if do_extra_eval:
+                assert extra_eval_fn is not None
+                extra_metrics = extra_eval_fn(model)
+
+                for key, value in extra_metrics.items():
+                    history.setdefault(key, []).append(float(value))
 
         if progress_bar is not None:
             postfix = {

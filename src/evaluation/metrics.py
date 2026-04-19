@@ -1,5 +1,7 @@
 from __future__ import annotations
 import numpy as np
+import torch
+from torch import Tensor
 
 def attention_matrix(W : np.ndarray) -> np.ndarray:
     """Computes the attention matrix S = W W^T/sqrt(dr)"""
@@ -9,7 +11,6 @@ def attention_matrix(W : np.ndarray) -> np.ndarray:
     return (W @ W.T)/ np.sqrt(d*r)
 
 def compute_eigenvalues_symmetric(matrix : np.ndarray) -> np.ndarray:
-    """Computes the eigenvalues of a symmetric matrix"""
     if matrix.ndim != 2:
         raise ValueError("Input must be a 2d array.")
     if matrix.shape[0] != matrix.shape[1]:
@@ -20,7 +21,6 @@ def compute_eigenvalues_symmetric(matrix : np.ndarray) -> np.ndarray:
     return np.sort(eigenvalues)[::-1]
 
 def compute_trace(matrix : np.ndarray) -> np.float64:
-    """Computes the trace of a matrix"""
     if matrix.ndim != 2:
         raise ValueError("Input must be a 2d array.")
     if matrix.shape[0] != matrix.shape[1]:
@@ -28,7 +28,6 @@ def compute_trace(matrix : np.ndarray) -> np.float64:
     return np.trace(matrix)
 
 def compute_frobenius_norm(matrix : np.ndarray) -> float:
-    """Computes the Frobenius norm of a matrix"""
     if matrix.ndim != 2:
         raise ValueError("Input must be a 2d array.")
     return float(np.linalg.norm(matrix, 'fro'))
@@ -55,7 +54,7 @@ def compute_spectral_concentration(eigvals: np.ndarray) -> float:
     return float(eigvals[0] / trace)
 
 def compute_spectral_observables(W: np.ndarray) -> dict[str, float | np.ndarray]:
-    """Compute spectral observables associated with W."""
+    """Compute spectral metrics associated with W."""
     S = attention_matrix(W)
     eigvals = compute_eigenvalues_symmetric(S)
     trace = float(compute_trace(S))
@@ -85,7 +84,6 @@ def masked_mse_per_coordinate(
         X : (n_samples, T, d) array of input samples
         predictions : (n_samples, d) array of predicted masked tokens
         mask_indices : (n_samples, ) array of masked token indices per each sample
-
     Returns : 
         MSE : scalar value of the MSE per coordinate, avg over the dataset and over d coordinates
     """
@@ -113,4 +111,82 @@ def compute_effective_rank(eigvals: np.ndarray, eps: float = 1e-12) -> float:
 
     p = eigvals / eigvals.sum()
     return float(np.exp(-np.sum(p * np.log(p))))
+
+
+def matrix_cosine_similarity_torch(A: Tensor, B: Tensor, eps: float = 1e-12) -> float:
+    """Cosine similarity between two matrices."""
+    if A.shape != B.shape:
+        raise ValueError("A and B must have the same shape.")
+
+    A_flat = A.reshape(-1)
+    B_flat = B.reshape(-1)
+    denom = torch.linalg.norm(A_flat) * torch.linalg.norm(B_flat)
+    if denom.item() <= eps:
+        return float("nan")
+
+    return float(torch.dot(A_flat, B_flat).item() / denom.item())
+
+
+def relative_frobenius_error_torch(A: Tensor, B: Tensor, eps: float = 1e-12) -> float:
+    """Relative Frobenius error ||A-B||_F / ||B||_F."""
+    if A.shape != B.shape:
+        raise ValueError("A and B must have the same shape.")
+
+    denom = torch.linalg.norm(B, ord="fro")
+    if denom.item() <= eps:
+        return float("nan")
+    return float((torch.linalg.norm(A - B, ord="fro") / denom).item())
+
+
+@torch.no_grad()
+def attention_level_error_torch(
+    model,
+    X_tilde: Tensor,
+    A_star: Tensor,
+    normalize_by_T2: bool = True,
+) -> float:
+    """Mean attention-level error between student and teacher attention."""
+    if X_tilde.ndim != 3:
+        raise ValueError("X_tilde must have shape (batch, T, d).")
+    if A_star.ndim != 3:
+        raise ValueError("A_star must have shape (batch, T, T).")
+    if X_tilde.shape[0] != A_star.shape[0]:
+        raise ValueError("X_tilde and A_star must have the same batch size.")
+    model.eval()
+    A_student = model.attention_weights(X_tilde)
+    if A_student.shape != A_star.shape:
+        raise ValueError("A_student and A_star must have the same shape.")
+    
+    sq_error = torch.sum((A_student - A_star) ** 2, dim=(1, 2))
+    if normalize_by_T2:
+        T = A_star.shape[1]
+        sq_error = sq_error / (T * T)
+
+    return float(torch.mean(sq_error).item())
+
+
+@torch.no_grad()
+def teacher_recovery_metrics_torch(
+    model,
+    S_star: Tensor,
+    X_tilde: Tensor | None = None,
+    A_star: Tensor | None = None,
+) -> dict[str, float]:
+    """Teacher-recovery metrics."""
+    S = model.attention_matrix()
+
+    metrics = {
+        "cosine_S_S_star": matrix_cosine_similarity_torch(S, S_star),
+        "relative_error_S_S_star": relative_frobenius_error_torch(S, S_star),
+    }
+
+    if X_tilde is not None and A_star is not None:
+        metrics["attention_level_error"] = attention_level_error_torch(
+            model=model,
+            X_tilde=X_tilde,
+            A_star=A_star,
+            normalize_by_T2=True,
+        )
+
+    return metrics
 

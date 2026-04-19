@@ -16,5 +16,5 @@ CONFIG_DIR="/home/anastass/spoc-masked-attention/configs/numerics-maskrandom/bat
 
 for config in "$CONFIG_DIR"/*.yaml; do
   echo "Submitting n_train sweep for $config in $CONFIG_DIR"
-  sbatch slurm/linear_ntrain.slurm "$config"
+  sbatch slurm/linear_ntrain_fixed_sigma.slurm "$config"
 done

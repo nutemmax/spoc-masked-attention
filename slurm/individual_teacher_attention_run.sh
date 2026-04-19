@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --job-name=diag_long
-#SBATCH --output=logs/diag_long_%j.out
-#SBATCH --error=logs/diag_long_%j.err
+#SBATCH --job-name=teacher_attn
+#SBATCH --output=logs/teacher_attn_%j.out
+#SBATCH --error=logs/teacher_attn_%j.err
 #SBATCH --partition=academic
 #SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=1
@@ -26,20 +26,20 @@ export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 export MKL_NUM_THREADS=$SLURM_CPUS_PER_TASK
 export OPENBLAS_NUM_THREADS=$SLURM_CPUS_PER_TASK
 
-CONFIG_PATH="/home/anastass/spoc-masked-attention/configs/maskrandom/iter1000/cov_toeplitz_maskrandom_rho0p9_lambda1e-05_beta1_d50_T5_lr0p001_iter1000.yaml"
+CONFIG_PATH="/home/anastass/spoc-masked-attention/configs/default-teacher-attention.yaml"
 NTRAIN=1000
 SEED=42
 
 CONFIG_NAME=$(basename "$CONFIG_PATH" .yaml)
-SAVE_ROOT="results/individual/${CONFIG_NAME}_ntrain_${NTRAIN}"
+SAVE_ROOT="results/teacher-attention/individual/${CONFIG_NAME}_ntrain_${NTRAIN}"
 
-echo "Running diagnostic long run"
+echo "Running teacher-attention experiment"
 echo "Config:      $CONFIG_PATH"
 echo "n_train:     $NTRAIN"
 echo "seed:        $SEED"
 echo "save_root:   $SAVE_ROOT"
 
-python -u scripts/run_fixed_sigma_experiment.py \
+python -u scripts/run_teacher_attention_experiment.py \
   --config "$CONFIG_PATH" \
   --n-train "$NTRAIN" \
   --seed "$SEED" \
