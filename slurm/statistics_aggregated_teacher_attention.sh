@@ -1,4 +1,4 @@
-SWEEP_ROOT="results/teacher-attention/mask-random/"
+SWEEP_ROOT="results/teacher-attention/mask-random/iter_5000/tuning-scaled-gaussian-init/"
 
 # ====== SETUP ======
 PROJECT_DIR=/home/anastass/spoc-masked-attention

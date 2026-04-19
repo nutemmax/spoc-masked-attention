@@ -124,15 +124,16 @@ def main() -> None:
 
     teacher_inits = [
         "standard_gaussian",
-        # "scaled_gaussian",
+        "scaled_gaussian",
     ]
     sigma_stars = [0.5, 1.0, 2.0]
 
     ds = [50]
     Ts = [5]
 
-    r_star_values = [BEST]
-    beta_stars = [0.25, 0.5, 1.0, 2.0, 4.0]
+    r_star_values = [50]
+    # beta_stars = [0.25, 0.5, 1.0, 2.0, 4.0]
+    beta_stars = [1.0]
     betas = [1.0]
     lambda_regs = [1e-5] # best one
     learning_rates = [1e-3] # best one

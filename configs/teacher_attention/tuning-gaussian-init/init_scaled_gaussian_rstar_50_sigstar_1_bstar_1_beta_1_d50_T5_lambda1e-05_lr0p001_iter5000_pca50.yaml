@@ -1,0 +1,36 @@
+experiment:
+  save_root: results/teacher-attention/individual
+  run_name: null
+  seed: 0
+data:
+  data_model: teacher_attention
+  T: 5
+  d: 50
+  mask_value: 1.0
+  masking_strategy: random
+teacher:
+  init: scaled_gaussian
+  r_star: 50
+  beta_star: 1.0
+  sigma_star: 1.0
+model:
+  r: 50
+  beta: 1.0
+  normalize_sqrt_d: true
+  dtype: float64
+  device: cpu
+training:
+  alpha: 1.0
+  n_train: null
+  n_steps: 5000
+  learning_rate: 0.001
+  lambda_reg: 1.0e-05
+evaluation:
+  n_population: 5000
+  eval_every: 25
+  track_attention_error_during_training: true
+  attention_metric_subset_size: 512
+  pca_n_components: 50
+logging:
+  use_wandb: true
+  project: spoc-masked-attention

@@ -12,7 +12,7 @@ cd "$PROJECT_DIR"
 
 mkdir -p logs/grids
 
-CONFIG_DIR="/home/anastass/spoc-masked-attention/configs/teacher_attention/"
+CONFIG_DIR="/home/anastass/spoc-masked-attention/configs/teacher_attention/tuning-scaled-gaussian-init/"
 
 if [ ! -d "$CONFIG_DIR" ]; then
   echo "Config directory does not exist: $CONFIG_DIR"
