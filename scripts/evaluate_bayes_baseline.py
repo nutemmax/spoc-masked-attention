@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 
 from src.data.covariance import build_covariance, is_positive_definite
-from src.data.generator import generate_gaussian_sequences
+from src.data.generator_fixed_sigma import generate_gaussian_sequences
 from src.data.masking import build_masked_dataset
 from src.baselines.bayes import (
     predict_bayes_batch,

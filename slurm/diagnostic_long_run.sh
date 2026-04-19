@@ -39,7 +39,7 @@ echo "n_train:     $NTRAIN"
 echo "seed:        $SEED"
 echo "save_root:   $SAVE_ROOT"
 
-python -u scripts/run_experiment.py \
+python -u scripts/run_fixed_sigma_experiment.py \
   --config "$CONFIG_PATH" \
   --n-train "$NTRAIN" \
   --seed "$SEED" \

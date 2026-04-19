@@ -23,7 +23,7 @@ from src.baselines.bayes import (
     bayes_population_risk_uniform_mask,
 )
 from src.data.covariance import build_covariance, is_positive_definite
-from src.data.generator import (
+from src.data.generator_fixed_sigma import (
     generate_single_mask_dataset_from_alpha_torch,
     generate_single_mask_dataset_torch,
 )

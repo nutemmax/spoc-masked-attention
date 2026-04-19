@@ -84,7 +84,7 @@ echo "Running config=$CONFIG_NAME n_train=$NTRAIN (task $TASK_ID)"
 echo "Saving under: $SWEEP_DIR_REL"
 
 # ====== RUN ======
-python -u scripts/run_experiment.py \
+python -u scripts/run_fixed_sigma_experiment.py \
   --config "$CONFIG_PATH" \
   --n-train "$NTRAIN" \
   --seed "$SEED" \
