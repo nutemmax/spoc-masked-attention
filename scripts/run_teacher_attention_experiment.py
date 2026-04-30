@@ -51,6 +51,22 @@ def set_seeds(seed: int) -> None:
     torch.manual_seed(seed)
 
 
+def make_run_seed(master_seed: int, n_train: int, alpha: float | None = None) -> int:
+    """
+    Deterministically derive a run-specific seed from a master seed and n_train.
+
+    This ensures that different n_train values use different randomness, while the
+    whole sweep remains reproducible from the master seed.
+    """
+    seed_sequence = np.random.SeedSequence([
+        int(master_seed),
+        int(n_train),
+        0 if alpha is None else int(round(float(alpha) * 1_000_000)),
+    ])
+
+    return int(seed_sequence.generate_state(1, dtype=np.uint32)[0])
+
+
 def resolve_r_star(value, d: int) -> int:
     if value is None:
         return d
@@ -74,9 +90,13 @@ def build_teacher_attention_suffix(config: dict, actual_n_train: int) -> str:
     model_cfg = config["model"]
     teacher_cfg = config["teacher"]
     training_cfg = config["training"]
+    experiment_cfg = config["experiment"]
+
     r_star_label = teacher_cfg.get("r_star")
     if r_star_label is None:
         r_star_label = "d"
+
+    run_seed = int(experiment_cfg.get("run_seed", experiment_cfg.get("seed", 0)))
 
     parts = [
         "teacher_attention",
@@ -93,7 +113,7 @@ def build_teacher_attention_suffix(config: dict, actual_n_train: int) -> str:
         f"lr_{training_cfg['learning_rate']}",
         f"iter_{int(training_cfg['n_steps'])}",
         f"ntrain_{int(actual_n_train)}",
-        f"seed_{int(config['experiment']['seed'])}",
+        f"runseed_{run_seed}",
     ]
 
     return "__".join(parts).replace(".", "p")
@@ -164,7 +184,8 @@ def compute_run_metrics(
     history: dict[str, list[float]],
     runtime_seconds: float,
     n_steps: int,
-    seed: int,
+    master_seed: int,
+    run_seed: int,
     n_train: int,
     n_population: int,
     alpha: float | None,
@@ -187,7 +208,13 @@ def compute_run_metrics(
 
     metrics = {
         "alpha": float(alpha) if alpha is not None else None,
-        "seed": int(seed),
+        "master_seed": int(master_seed),
+        "run_seed": int(run_seed),
+        "seed": int(run_seed),  # backward compatibility: seed now means actual run seed
+        "teacher_seed": int(run_seed),
+        "train_data_seed": int(run_seed + 1),
+        "population_data_seed": int(run_seed + 2),
+        "student_init_seed": int(run_seed + 3),
         "n_train": int(n_train),
         "n_population": int(n_population),
         "train_loss": float(train_loss),
@@ -227,8 +254,8 @@ def compute_run_metrics(
 
 
 def run_experiment(config: dict) -> dict:
-    seed = int(config["experiment"]["seed"])
-    set_seeds(seed)
+    experiment_cfg = config.setdefault("experiment", {})
+    master_seed = int(experiment_cfg.get("master_seed", experiment_cfg.get("seed", 0)))
 
     T = int(config["data"]["T"])
     d = int(config["data"]["d"])
@@ -257,6 +284,19 @@ def run_experiment(config: dict) -> dict:
         actual_n_train = n_train_override
     else:
         actual_n_train = int(round(float(alpha) * (d ** 2)))
+
+    run_seed = make_run_seed(
+        master_seed=master_seed,
+        n_train=actual_n_train,
+        alpha=float(alpha) if n_train_override is None else None,
+    )
+
+    config["experiment"]["master_seed"] = int(master_seed)
+    config["experiment"]["run_seed"] = int(run_seed)
+    config["experiment"]["seed"] = int(run_seed)
+
+    seed = int(run_seed)
+    set_seeds(seed)
 
     dtype = get_torch_dtype(config["model"]["dtype"])
     device = config["model"]["device"]
@@ -414,6 +454,7 @@ def run_experiment(config: dict) -> dict:
             pca_n_components = min(75, Td // 2)
         else:
             pca_n_components = int(pca_n_components_cfg)
+
         pca_model = fit_pca(X_train_np, n_components=pca_n_components)
         pca_train_loss = evaluate_pca(
             X=X_train_np,
@@ -442,7 +483,8 @@ def run_experiment(config: dict) -> dict:
             history=history,
             runtime_seconds=runtime_seconds,
             n_steps=n_steps,
-            seed=seed,
+            master_seed=master_seed,
+            run_seed=run_seed,
             n_train=actual_n_train,
             n_population=n_population,
             alpha=float(alpha) if n_train_override is None else None,
@@ -654,7 +696,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Override training set size. If provided, overrides alpha.",
     )
-    parser.add_argument("--seed", type=int, default=None, help="Override random seed.")
+    parser.add_argument("--seed", type=int, default=None, help="Override master seed.")
     parser.add_argument("--save-root", type=str, default=None, help="Override save root directory.")
     parser.add_argument("--run-name", type=str, default=None, help="Override run name.")
     return parser.parse_args()
@@ -675,7 +717,6 @@ def main() -> None:
                 config.setdefault("experiment", {})
                 config["experiment"]["save_root"] = f"results/individual/{config_name}"
 
-        
         config = apply_overrides(
             config=config,
             alpha=args.alpha,
@@ -684,6 +725,15 @@ def main() -> None:
             save_root=None,
             run_name=args.run_name,
         )
+
+        # Backward compatibility
+        # old configs contain experiment.seed only, new ones contain experiment.master_seed only
+        experiment_cfg = config.setdefault("experiment", {})
+        if "master_seed" not in experiment_cfg or experiment_cfg["master_seed"] is None:
+            experiment_cfg["master_seed"] = int(experiment_cfg.get("seed", 0))
+        if "seed" not in experiment_cfg or experiment_cfg["seed"] is None:
+            experiment_cfg["seed"] = int(experiment_cfg["master_seed"])
+
         validate_config(config)
 
         run_dir = create_run_dir(PROJECT_ROOT, config)

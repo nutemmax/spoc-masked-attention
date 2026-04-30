@@ -152,6 +152,12 @@ def build_sweep_metadata(run_configs: list[dict], sweep_key: str) -> dict | None
         base_config["experiment"]["save_root"] = None
         base_config["experiment"]["run_name"] = None
         base_config["experiment"]["seed"] = None
+        base_config["experiment"]["master_seed"] = None
+        base_config["experiment"]["run_seed"] = None
+        base_config["experiment"]["teacher_seed"] = None
+        base_config["experiment"]["train_data_seed"] = None
+        base_config["experiment"]["population_data_seed"] = None
+        base_config["experiment"]["student_init_seed"] = None
 
     if "training" in base_config:
         if sweep_key == "alpha":
@@ -159,7 +165,32 @@ def build_sweep_metadata(run_configs: list[dict], sweep_key: str) -> dict | None
         elif sweep_key == "n_train":
             base_config["training"]["n_train"] = None
 
-    seeds = sorted({
+    # seeds = sorted({
+    #     int(cfg["experiment"]["seed"])
+    #     for cfg in run_configs
+    #     if cfg.get("experiment", {}).get("seed") is not None
+    # })
+
+    # metadata = {
+    #     "sweep_key": sweep_key,
+    #     "seeds": seeds,
+    #     "base_config": base_config,
+    # }
+
+    master_seeds = sorted({
+        int(cfg["experiment"]["master_seed"])
+        for cfg in run_configs
+        if cfg.get("experiment", {}).get("master_seed") is not None
+    })
+
+    run_seeds = sorted({
+        int(cfg["experiment"]["run_seed"])
+        for cfg in run_configs
+        if cfg.get("experiment", {}).get("run_seed") is not None
+    })
+
+    # backward compatibility for older runs that only saved experiment.seed
+    legacy_seeds = sorted({
         int(cfg["experiment"]["seed"])
         for cfg in run_configs
         if cfg.get("experiment", {}).get("seed") is not None
@@ -167,7 +198,9 @@ def build_sweep_metadata(run_configs: list[dict], sweep_key: str) -> dict | None
 
     metadata = {
         "sweep_key": sweep_key,
-        "seeds": seeds,
+        "master_seeds": master_seeds,
+        "run_seeds": run_seeds,
+        "legacy_seeds": legacy_seeds,
         "base_config": base_config,
     }
 
@@ -199,7 +232,13 @@ def write_summary_csv(rows: list[dict], path: Path) -> None:
 
     preferred = [
         "alpha",
+        "master_seed",
+        "run_seed",
         "seed",
+        "teacher_seed",
+        "train_data_seed",
+        "population_data_seed",
+        "student_init_seed",
         "n_train",
         "n_population",
         "teacher_init",
