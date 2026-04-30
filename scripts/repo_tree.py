@@ -15,7 +15,8 @@ IGNORE = {
     ".venv",
     "venv",
     "wandb",
-    "overleaf"
+    "overleaf",
+    "spoc"
 }
 
 
