@@ -126,6 +126,20 @@ def matrix_cosine_similarity_torch(A: Tensor, B: Tensor, eps: float = 1e-12) -> 
 
     return float(torch.dot(A_flat, B_flat).item() / denom.item())
 
+def center_symmetric_matrix_torch(S: Tensor) -> Tensor:
+    """Return S - (Tr(S)/d) I."""
+    if S.ndim != 2 or S.shape[0] != S.shape[1]:
+        raise ValueError("S must be a square 2D tensor.")
+
+    d = S.shape[0]
+    identity = torch.eye(d, dtype=S.dtype, device=S.device)
+    return S - (torch.trace(S) / d) * identity
+
+def centered_matrix_cosine_similarity_torch(A: Tensor, B: Tensor, eps: float = 1e-12) -> float:
+    """Cosine similarity between centered matrices."""
+    A_centered = center_symmetric_matrix_torch(A)
+    B_centered = center_symmetric_matrix_torch(B)
+    return matrix_cosine_similarity_torch(A_centered, B_centered, eps=eps)
 
 def relative_frobenius_error_torch(A: Tensor, B: Tensor, eps: float = 1e-12) -> float:
     """Relative Frobenius error ||A-B||_F / ||B||_F."""

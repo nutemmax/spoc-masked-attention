@@ -31,7 +31,7 @@ NTRAIN=1000
 SEED=42
 
 CONFIG_NAME=$(basename "$CONFIG_PATH" .yaml)
-SAVE_ROOT="results/teacher-attention/individual/${CONFIG_NAME}_ntrain_${NTRAIN}"
+SAVE_ROOT="results/teacher-attention/individual/${CONFIG_NAME}_ntrain_${NTRAIN}_seed_${SEED}"
 
 echo "Running teacher-attention experiment"
 echo "Config:      $CONFIG_PATH"

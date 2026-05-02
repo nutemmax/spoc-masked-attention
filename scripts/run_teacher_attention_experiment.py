@@ -32,6 +32,7 @@ from src.evaluation.metrics import (
     matrix_cosine_similarity_torch,
     relative_frobenius_error_torch,
     teacher_recovery_metrics_torch,
+    centered_matrix_cosine_similarity_torch,
 )
 from src.models.attention import TiedSingleHeadAttention
 from src.training.trainer import evaluate_reconstruction_loss, fit
@@ -170,6 +171,27 @@ def compute_history_summaries(history: dict[str, list[float]]) -> dict[str, floa
     }
 
 
+def generate_random_student_matrix_like_model(
+    model: TiedSingleHeadAttention,
+    random_baseline_seed: int,
+) -> torch.Tensor:
+    """Generate a random untrained student matrix S_rand with the same initialization law as the model."""
+    d_model, r_model = model.W.shape
+
+    generator = torch.Generator(device=model.W.device)
+    generator.manual_seed(int(random_baseline_seed))
+
+    W_rand = torch.randn(
+        d_model,
+        r_model,
+        dtype=model.W.dtype,
+        device=model.W.device,
+        generator=generator,
+    ) / np.sqrt(r_model)
+
+    return (W_rand @ W_rand.T) / np.sqrt(d_model * r_model)
+
+
 def compute_run_metrics(
     model: TiedSingleHeadAttention,
     W_star_t: torch.Tensor,
@@ -186,6 +208,8 @@ def compute_run_metrics(
     n_steps: int,
     master_seed: int,
     run_seed: int,
+    random_baseline_seed: int,
+    S_rand_t: torch.Tensor,
     n_train: int,
     n_population: int,
     alpha: float | None,
@@ -201,20 +225,28 @@ def compute_run_metrics(
 
     with torch.no_grad():
         S_t = model.attention_matrix()
+
         teacher_metrics = {
             "cosine_S_S_star": matrix_cosine_similarity_torch(S_t, S_star_t),
+            "centered_cosine_S_S_star": centered_matrix_cosine_similarity_torch(S_t, S_star_t),
             "relative_error_S_S_star": relative_frobenius_error_torch(S_t, S_star_t),
         }
+
+        teacher_metrics.update({
+            "random_baseline_cosine_S_S_star": matrix_cosine_similarity_torch(S_rand_t, S_star_t),
+            "random_baseline_centered_cosine_S_S_star": centered_matrix_cosine_similarity_torch(S_rand_t, S_star_t),
+        })
 
     metrics = {
         "alpha": float(alpha) if alpha is not None else None,
         "master_seed": int(master_seed),
         "run_seed": int(run_seed),
-        "seed": int(run_seed),  # backward compatibility: seed now means actual run seed
-        "teacher_seed": int(run_seed),
+        "seed": int(run_seed),  # backward compatibility: seed now means run seed
+        "teacher_seed": int(master_seed),
         "train_data_seed": int(run_seed + 1),
-        "population_data_seed": int(run_seed + 2),
-        "student_init_seed": int(run_seed + 3),
+        "population_data_seed": int(master_seed + 10_000_000),
+        "student_init_seed": int(master_seed + 20_000_000),
+        "random_baseline_seed": int(random_baseline_seed),
         "n_train": int(n_train),
         "n_population": int(n_population),
         "train_loss": float(train_loss),
@@ -291,12 +323,23 @@ def run_experiment(config: dict) -> dict:
         alpha=float(alpha) if n_train_override is None else None,
     )
 
+    teacher_seed = int(master_seed)
+    train_data_seed = int(run_seed + 1)
+    population_data_seed = int(master_seed + 10_000_000)
+    student_init_seed = int(master_seed + 20_000_000)
+    random_baseline_seed = int(master_seed + 30_000_000)
+
     config["experiment"]["master_seed"] = int(master_seed)
     config["experiment"]["run_seed"] = int(run_seed)
     config["experiment"]["seed"] = int(run_seed)
 
-    seed = int(run_seed)
-    set_seeds(seed)
+    config["experiment"]["teacher_seed"] = int(teacher_seed)
+    config["experiment"]["train_data_seed"] = int(train_data_seed)
+    config["experiment"]["population_data_seed"] = int(population_data_seed)
+    config["experiment"]["student_init_seed"] = int(student_init_seed)
+    config["experiment"]["random_baseline_seed"] = int(random_baseline_seed)
+
+    set_seeds(run_seed)
 
     dtype = get_torch_dtype(config["model"]["dtype"])
     device = config["model"]["device"]
@@ -308,7 +351,7 @@ def run_experiment(config: dict) -> dict:
     teacher_init = str(teacher_cfg["init"])
     sigma_star = float(teacher_cfg["sigma_star"])
 
-    torch.manual_seed(seed)
+    torch.manual_seed(teacher_seed)
     W_star_t, S_star_t = generate_teacher_weights_torch(
         d=d,
         r_star=r_star,
@@ -318,7 +361,7 @@ def run_experiment(config: dict) -> dict:
         device=device,
     )
 
-    torch.manual_seed(seed + 1)
+    torch.manual_seed(train_data_seed)
     train_data = generate_single_mask_teacher_attention_dataset_torch(
         n_samples=actual_n_train,
         T=T,
@@ -334,7 +377,7 @@ def run_experiment(config: dict) -> dict:
 
     n_population = int(config["evaluation"]["n_population"])
 
-    torch.manual_seed(seed + 2)
+    torch.manual_seed(population_data_seed)
     pop_data = generate_single_mask_teacher_attention_dataset_torch(
         n_samples=n_population,
         T=T,
@@ -356,7 +399,7 @@ def run_experiment(config: dict) -> dict:
     X_tilde_pop_t = pop_data["X_tilde"]
     mask_pop_t = pop_data["mask_indices"]
 
-    torch.manual_seed(seed + 3)
+    torch.manual_seed(student_init_seed)
     model = TiedSingleHeadAttention(
         d=d,
         r=r,
@@ -366,11 +409,16 @@ def run_experiment(config: dict) -> dict:
         device=device,
     )
 
+    S_rand_t = generate_random_student_matrix_like_model(
+        model=model,
+        random_baseline_seed=random_baseline_seed,
+    )
+
     wandb_module = init_wandb_if_enabled(
         config=config,
         actual_n_train=actual_n_train,
         alpha=float(alpha) if n_train_override is None else None,
-        seed=seed,
+        seed=run_seed,
     )
 
     eval_every = int(config["evaluation"].get("eval_every", 25))
@@ -384,18 +432,31 @@ def run_experiment(config: dict) -> dict:
     A_star_metric_t = pop_data["A_star"][:subset_size]
 
     def extra_eval_fn(current_model) -> dict[str, float]:
-        if track_attention_error:
-            return teacher_recovery_metrics_torch(
-                model=current_model,
-                S_star=S_star_t,
-                X_tilde=X_tilde_metric_t,
-                A_star=A_star_metric_t,
-            )
-
-        return teacher_recovery_metrics_torch(
+        metrics = teacher_recovery_metrics_torch(
             model=current_model,
             S_star=S_star_t,
+            X_tilde=X_tilde_metric_t if track_attention_error else None,
+            A_star=A_star_metric_t if track_attention_error else None,
         )
+
+        S_current_t = current_model.attention_matrix()
+
+        metrics["centered_cosine_S_S_star"] = centered_matrix_cosine_similarity_torch(
+            S_current_t,
+            S_star_t,
+        )
+
+        metrics["random_baseline_cosine_S_S_star"] = matrix_cosine_similarity_torch(
+            S_rand_t,
+            S_star_t,
+        )
+
+        metrics["random_baseline_centered_cosine_S_S_star"] = centered_matrix_cosine_similarity_torch(
+            S_rand_t,
+            S_star_t,
+        )
+
+        return metrics
 
     n_steps = int(config["training"]["n_steps"])
     start_time = time.perf_counter()
@@ -485,6 +546,8 @@ def run_experiment(config: dict) -> dict:
             n_steps=n_steps,
             master_seed=master_seed,
             run_seed=run_seed,
+            random_baseline_seed=random_baseline_seed,
+            S_rand_t=S_rand_t,
             n_train=actual_n_train,
             n_population=n_population,
             alpha=float(alpha) if n_train_override is None else None,
@@ -729,10 +792,14 @@ def main() -> None:
         # Backward compatibility
         # old configs contain experiment.seed only, new ones contain experiment.master_seed only
         experiment_cfg = config.setdefault("experiment", {})
-        if "master_seed" not in experiment_cfg or experiment_cfg["master_seed"] is None:
-            experiment_cfg["master_seed"] = int(experiment_cfg.get("seed", 0))
-        if "seed" not in experiment_cfg or experiment_cfg["seed"] is None:
-            experiment_cfg["seed"] = int(experiment_cfg["master_seed"])
+        if args.seed is not None:
+            experiment_cfg["master_seed"] = int(args.seed)
+            experiment_cfg["seed"] = int(args.seed)
+        else:
+            if "master_seed" not in experiment_cfg or experiment_cfg["master_seed"] is None:
+                experiment_cfg["master_seed"] = int(experiment_cfg.get("seed", 0))
+            if "seed" not in experiment_cfg or experiment_cfg["seed"] is None:
+                experiment_cfg["seed"] = int(experiment_cfg["master_seed"])
 
         validate_config(config)
 

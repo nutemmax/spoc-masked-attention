@@ -579,34 +579,93 @@ def plot_eval_metric_history(
 def plot_teacher_recovery_history(
     history: dict[str, list[float]],
     title_prefix: str = "Teacher recovery",
-) -> list[tuple[str, Figure]]:
-    figures: list[tuple[str, Figure]] = []
+) -> list:
+    """Create plots for teacher-recovery metrics tracked during training."""
+    figures = []
+
+    steps = history.get("steps", [])
+    if not steps:
+        return figures
 
     if "cosine_S_S_star" in history:
-        fig, _ = plot_eval_metric_history(
-            history=history,
-            metric_key="cosine_S_S_star",
-            ylabel=r"$\cos(S,S^\star)$",
-            title=f"{title_prefix}: cosine similarity",
-        )
-        figures.append(("cosine_S_S_star", fig))
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.plot(steps, history["cosine_S_S_star"], linewidth=2, label="Cosine similarity")
+        ax.set_xlabel("Iteration")
+        ax.set_ylabel(r"$\cos(S, S^\star)$")
+        ax.set_title(f"{title_prefix}: cosine similarity")
+        ax.legend()
+        ax.grid(False)
+        figures.append(("cosine_similarity", fig))
+
+    cosine_keys = [
+        "cosine_S_S_star",
+        "centered_cosine_S_S_star",
+        "random_baseline_cosine_S_S_star",
+        "random_baseline_centered_cosine_S_S_star",
+    ]
+
+    if any(key in history for key in cosine_keys):
+        fig, ax = plt.subplots(figsize=(10, 6))
+
+        if "cosine_S_S_star" in history:
+            ax.plot(
+                steps,
+                history["cosine_S_S_star"],
+                linewidth=2,
+                label=r"Learned $\cos(S, S^\star)$",
+            )
+
+        if "centered_cosine_S_S_star" in history:
+            ax.plot(
+                steps,
+                history["centered_cosine_S_S_star"],
+                linewidth=2,
+                label=r"Learned centered cosine",
+            )
+
+        if "random_baseline_cosine_S_S_star" in history:
+            ax.plot(
+                steps,
+                history["random_baseline_cosine_S_S_star"],
+                linewidth=2,
+                linestyle="--",
+                label=r"Random baseline $\cos(S_{\mathrm{rand}}, S^\star)$",
+            )
+
+        if "random_baseline_centered_cosine_S_S_star" in history:
+            ax.plot(
+                steps,
+                history["random_baseline_centered_cosine_S_S_star"],
+                linewidth=2,
+                linestyle="--",
+                label=r"Random baseline centered cosine",
+            )
+
+        ax.set_xlabel("Iteration")
+        ax.set_ylabel("Cosine similarity")
+        ax.set_title(f"{title_prefix}: cosine similarity and baselines")
+        ax.legend()
+        ax.grid(False)
+        figures.append(("cosine_similarity_with_baselines", fig))
 
     if "relative_error_S_S_star" in history:
-        fig, _ = plot_eval_metric_history(
-            history=history,
-            metric_key="relative_error_S_S_star",
-            ylabel=r"$\|S-S^\star\|_F / \|S^\star\|_F$",
-            title=f"{title_prefix}: relative Frobenius error",
-        )
-        figures.append(("relative_error_S_S_star", fig))
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.plot(steps, history["relative_error_S_S_star"], linewidth=2, label="Relative Frobenius error")
+        ax.set_xlabel("Iteration")
+        ax.set_ylabel(r"$\|S - S^\star\|_F / \|S^\star\|_F$")
+        ax.set_title(f"{title_prefix}: relative Frobenius error")
+        ax.legend()
+        ax.grid(False)
+        figures.append(("relative_error", fig))
 
     if "attention_level_error" in history:
-        fig, _ = plot_eval_metric_history(
-            history=history,
-            metric_key="attention_level_error",
-            ylabel=r"$\|A_S(\widetilde X)-A_{S^\star}(G)\|_F^2/T^2$",
-            title=f"{title_prefix}: attention-level error",
-        )
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.plot(steps, history["attention_level_error"], linewidth=2, label="Attention-level error")
+        ax.set_xlabel("Iteration")
+        ax.set_ylabel("Attention-level error")
+        ax.set_title(f"{title_prefix}: attention-level error")
+        ax.legend()
+        ax.grid(False)
         figures.append(("attention_level_error", fig))
 
     return figures

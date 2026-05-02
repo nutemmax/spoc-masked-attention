@@ -63,8 +63,7 @@ CONFIG_NAME=$(basename "$CONFIG_PATH" .yaml)
 SWEEP_TIMESTAMP=${SLURM_ARRAY_JOB_ID:-$SLURM_JOB_ID}
 SEED=42
 
-SWEEP_DIR_REL="results/teacher-attention/mask-${MASKING_STRATEGY}/iter_${ITERS}/tuning-scaled-gaussian-init/${CONFIG_NAME}/${CONFIG_NAME}_${SWEEP_TIMESTAMP}"
-
+SWEEP_DIR_REL="results/teacher-attention/mask-${MASKING_STRATEGY}/iter_${ITERS}/tuning-scaled-gaussian-init/${CONFIG_NAME}/${CONFIG_NAME}_seed_${SEED}_${SWEEP_TIMESTAMP}"
 NTRAIN_CSV="10,20,30,40,50,60,70,80,90,100,125,150,175,200,250,300,400,500,750,1000,1250,1500,1750,2000,2500,5000"
 
 # ====== SETUP ======
