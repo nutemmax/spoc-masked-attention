@@ -6,7 +6,7 @@ from pathlib import Path
 import yaml
 
 
-OUTPUT_DIR = Path("configs/teacher_attention/masking-schemes-dimension_d")
+OUTPUT_DIR = Path("configs/teacher_attention/masking-schemes-dimension_d/d200")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -165,7 +165,7 @@ def main() -> None:
         ("last", 1),
     ]
 
-    ds = [25, 75]
+    ds = [200]
     Ts = [5]
 
     r_values = [50]

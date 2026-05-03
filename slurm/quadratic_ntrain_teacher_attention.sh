@@ -1,14 +1,14 @@
 #!/bin/bash
-#SBATCH --job-name=teacher_ntrain
-#SBATCH --output=logs/quadratic_teacher/teacher_ntrain_%A_%a.out
-#SBATCH --error=logs/quadratic_teacher/teacher_ntrain_%A_%a.err
+#SBATCH --job-name=d200teacher_ntrain
+#SBATCH --output=logs/d200_quadratic_teacher/teacher_ntrain_%A_%a.out
+#SBATCH --error=logs/d200_quadratic_teacher/teacher_ntrain_%A_%a.err
 #SBATCH --partition=academic
 #SBATCH --time=24:00:00
-#SBATCH --cpus-per-task=1
+#SBATCH --cpus-per-task=5
 #SBATCH --mail-user=emma.anastassova@epfl.ch
 #SBATCH --mail-type=FAIL
-#SBATCH --mem=4G
-#SBATCH --array=0-36%18 # %18 
+#SBATCH --mem=20G
+#SBATCH --array=0-36%10 # %18 
 
 set -euo pipefail
 
