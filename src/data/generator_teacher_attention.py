@@ -147,6 +147,7 @@ def generate_single_mask_teacher_attention_dataset_torch(
     dtype: torch.dtype = torch.float64,
     device: str | torch.device = "cpu",
     masking_strategy: str = "random",
+    masks_per_sample: int = 1,
     normalize_sqrt_d: bool = True,
     generator: torch.Generator | None = None,
 ) -> dict[str, Tensor]:
@@ -164,16 +165,39 @@ def generate_single_mask_teacher_attention_dataset_torch(
     )
 
     masked_outputs = build_masked_dataset_torch(
-    X=data["X"],
-    mask_value=mask_value,
-    masking_strategy=masking_strategy,
-    return_targets=False,
-)
+        X=data["X"],
+        mask_value=mask_value,
+        masking_strategy=masking_strategy,
+        return_targets=False,
+        masks_per_sample=masks_per_sample,
+    )
 
     X_tilde = masked_outputs[0]
     mask_indices = masked_outputs[1]
 
+    if masking_strategy == "all":
+        X_target = data["X"].repeat_interleave(T, dim=0)
+        G_target = data["G"].repeat_interleave(T, dim=0)
+        A_star_target = data["A_star"].repeat_interleave(T, dim=0)
+    elif masking_strategy in {"k_random", "multi_random"}:
+        X_target = data["X"].repeat_interleave(int(masks_per_sample), dim=0)
+        G_target = data["G"].repeat_interleave(int(masks_per_sample), dim=0)
+        A_star_target = data["A_star"].repeat_interleave(int(masks_per_sample), dim=0)
+    else:
+        X_target = data["X"]
+        G_target = data["G"]
+        A_star_target = data["A_star"]
+
+    data["G_raw"] = data["G"]
+    data["A_star_raw"] = data["A_star"]
+    data["X_raw"] = data["X"]
+
+    data["G"] = G_target
+    data["A_star"] = A_star_target
+    data["X"] = X_target
     data["X_tilde"] = X_tilde
     data["mask_indices"] = mask_indices
+    data["n_raw_samples"] = torch.tensor(n_samples, dtype=torch.long, device=device)
+    data["n_loss_terms"] = torch.tensor(X_target.shape[0], dtype=torch.long, device=device)
 
     return data

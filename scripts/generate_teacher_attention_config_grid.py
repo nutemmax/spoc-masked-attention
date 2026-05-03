@@ -6,7 +6,7 @@ from pathlib import Path
 import yaml
 
 
-OUTPUT_DIR = Path("configs/teacher_attention")
+OUTPUT_DIR = Path("configs/teacher_attention/masking-schemes-dimension_d")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -22,6 +22,7 @@ BASE_CONFIG = {
         "d": 50,
         "mask_value": 1.0,
         "masking_strategy": "random",
+        "masks_per_sample": 1,
     },
     "teacher": {
         "init": "standard_gaussian",
@@ -49,6 +50,7 @@ BASE_CONFIG = {
         "track_attention_error_during_training": True,
         "attention_metric_subset_size": 512,
         "pca_n_components": None,
+        "n_random_baselines": 10,
     },
     "logging": {
         "use_wandb": True,
@@ -78,10 +80,36 @@ def active_sigma_values(teacher_init: str, sigma_stars: list[float]) -> list[flo
     raise ValueError(f"Unknown teacher init: {teacher_init}")
 
 
+def format_masking_name(masking_strategy: str, masks_per_sample: int = 1) -> str:
+    masking_strategy = str(masking_strategy)
+
+    if masking_strategy == "random":
+        if int(masks_per_sample) == 1:
+            return "maskrandom"
+        return f"maskrandom_k{int(masks_per_sample)}"
+
+    if masking_strategy == "k_random":
+        return f"maskrandom_k{int(masks_per_sample)}"
+
+    if masking_strategy == "all":
+        return "maskall"
+
+    if masking_strategy == "multi_random":
+        return f"maskmulti_k{int(masks_per_sample)}"
+
+    if masking_strategy == "last":
+        return "masklast"
+
+    raise ValueError(f"Unknown masking_strategy: {masking_strategy}")
+
+
 def build_config_name(
+    masking_strategy: str,
+    masks_per_sample: int,
     teacher_init: str,
     sigma_star: float,
     r_star: int | str | None,
+    r: int,
     beta_star: float,
     beta: float,
     d: int,
@@ -92,12 +120,11 @@ def build_config_name(
     pca_n_components: int | None,
 ) -> str:
     parts = [
-        f"init_{teacher_init}",
+        format_masking_name(masking_strategy, masks_per_sample),
+        f"r_{r}",
         f"rstar_{format_r_star(r_star)}",
+        f"sigstar_{format_float(sigma_star)}",
     ]
-
-    if teacher_init == "scaled_gaussian":
-        parts.append(f"sigstar_{format_float(sigma_star)}")
 
     parts.extend([
         f"bstar_{format_float(beta_star)}",
@@ -122,25 +149,35 @@ def keep_chessboard(index_tuple: tuple[int, ...]) -> bool:
 def main() -> None:
     use_chessboard = False
 
+    # if true, automatically set r = d, r_star = d, and pca_n_components = d, else use the explicit r_values, r_star_values, and pca_n_components_list below
+    tie_r_to_d = True
+
     teacher_inits = [
-        "standard_gaussian",
         "scaled_gaussian",
     ]
-    sigma_stars = [0.5, 1.0, 2.0]
+    sigma_stars = [1.0]
 
-    ds = [50]
+    masking_configs = [
+        ("random", 1),
+        ("k_random", 2),
+        ("all", 1),
+        ("multi_random", 2),
+        ("last", 1),
+    ]
+
+    ds = [25, 75]
     Ts = [5]
 
+    r_values = [50]
     r_star_values = [50]
-    # beta_stars = [0.25, 0.5, 1.0, 2.0, 4.0]
+
     beta_stars = [1.0]
     betas = [1.0]
-    lambda_regs = [1e-5] # best one
-    learning_rates = [1e-3] # best one
+    lambda_regs = [1e-5]
+    learning_rates = [1e-3]
     n_steps_list = [5000]
 
-    pca_n_components_list: list[int | None] = [50] # later to be tuned
-    # pca_n_components_list = [25, 50, 75, None]
+    pca_n_components_list: list[int | None] = [50]
 
     count = 0
 
@@ -148,61 +185,104 @@ def main() -> None:
         active_sigma_stars = active_sigma_values(teacher_init, sigma_stars)
 
         dimensions = [
+            masking_configs,
             active_sigma_stars,
             ds,
             Ts,
-            r_star_values,
             beta_stars,
             betas,
             lambda_regs,
             learning_rates,
             n_steps_list,
-            pca_n_components_list,
         ]
+
+        if not tie_r_to_d:
+            dimensions.extend([
+                r_values,
+                r_star_values,
+                pca_n_components_list,
+            ])
 
         for index_tuple in itertools.product(*[range(len(dim)) for dim in dimensions]):
             if use_chessboard and not keep_chessboard(index_tuple):
                 continue
 
-            (
-                i_sigma,
-                i_d,
-                i_T,
-                i_rstar,
-                i_beta_star,
-                i_beta,
-                i_lam,
-                i_lr,
-                i_steps,
-                i_pca,
-            ) = index_tuple
+            if tie_r_to_d:
+                (
+                    i_masking,
+                    i_sigma,
+                    i_d,
+                    i_T,
+                    i_beta_star,
+                    i_beta,
+                    i_lam,
+                    i_lr,
+                    i_steps,
+                ) = index_tuple
+            else:
+                (
+                    i_masking,
+                    i_sigma,
+                    i_d,
+                    i_T,
+                    i_beta_star,
+                    i_beta,
+                    i_lam,
+                    i_lr,
+                    i_steps,
+                    i_r,
+                    i_rstar,
+                    i_pca,
+                ) = index_tuple
 
+            masking_strategy, masks_per_sample = masking_configs[i_masking]
             sigma_star = active_sigma_stars[i_sigma]
             d = ds[i_d]
             T = Ts[i_T]
-            r_star = r_star_values[i_rstar]
             beta_star = beta_stars[i_beta_star]
             beta = betas[i_beta]
             lambda_reg = lambda_regs[i_lam]
             learning_rate = learning_rates[i_lr]
             n_steps = n_steps_list[i_steps]
-            pca_n_components = pca_n_components_list[i_pca]
+
+            if tie_r_to_d:
+                r = d
+                r_star = d
+                pca_n_components = d
+            else:
+                r = r_values[i_r]
+                r_star = r_star_values[i_rstar]
+                pca_n_components = pca_n_components_list[i_pca]
+
+            if r <= 0:
+                print(f"[skip] r={r} must be positive")
+                continue
 
             if r_star is not None and r_star != "d" and int(r_star) > d:
                 print(f"[skip] r_star={r_star} > d={d}")
+                continue
+
+            if masking_strategy in {"k_random", "multi_random"} and masks_per_sample > T:
+                print(f"[skip] masks_per_sample={masks_per_sample} > T={T}")
+                continue
+
+            if pca_n_components is not None and int(pca_n_components) > T * d:
+                print(f"[skip] pca_n_components={pca_n_components} > T*d={T * d}")
                 continue
 
             config = copy.deepcopy(BASE_CONFIG)
 
             config["data"]["d"] = d
             config["data"]["T"] = T
+            config["data"]["masking_strategy"] = masking_strategy
+            config["data"]["masks_per_sample"] = int(masks_per_sample)
 
             config["teacher"]["init"] = teacher_init
             config["teacher"]["r_star"] = r_star
             config["teacher"]["beta_star"] = beta_star
             config["teacher"]["sigma_star"] = sigma_star
 
-            config["model"]["r"] = d
+            config["model"]["r"] = r
             config["model"]["beta"] = beta
 
             config["training"]["lambda_reg"] = lambda_reg
@@ -212,9 +292,12 @@ def main() -> None:
             config["evaluation"]["pca_n_components"] = pca_n_components
 
             config_name = build_config_name(
+                masking_strategy=masking_strategy,
+                masks_per_sample=int(masks_per_sample),
                 teacher_init=teacher_init,
                 sigma_star=sigma_star,
                 r_star=r_star,
+                r=r,
                 beta_star=beta_star,
                 beta=beta,
                 d=d,

@@ -106,6 +106,7 @@ def build_teacher_attention_suffix(config: dict, actual_n_train: int) -> str:
         f"bstar_{format_float_for_name(float(teacher_cfg['beta_star']))}",
         f"sigstar_{format_float_for_name(float(teacher_cfg['sigma_star']))}",
         f"mask_{data_cfg['masking_strategy']}",
+        f"k_{int(data_cfg.get('masks_per_sample', 1))}",
         f"d_{int(data_cfg['d'])}",
         f"T_{int(data_cfg['T'])}",
         f"r_{int(model_cfg['r'])}",
@@ -192,6 +193,42 @@ def generate_random_student_matrix_like_model(
     return (W_rand @ W_rand.T) / np.sqrt(d_model * r_model)
 
 
+def compute_random_baseline_metrics(
+    model: TiedSingleHeadAttention,
+    S_star_t: torch.Tensor,
+    random_baseline_seed: int,
+    n_random_baselines: int,
+) -> dict[str, float]:
+    """Compute random-student baseline cosine metrics averaged over multiple random students."""
+    if n_random_baselines <= 0:
+        raise ValueError("n_random_baselines must be positive.")
+
+    raw_cosines = []
+    centered_cosines = []
+
+    for i in range(n_random_baselines):
+        S_rand_t = generate_random_student_matrix_like_model(
+            model=model,
+            random_baseline_seed=int(random_baseline_seed) + i,
+        )
+
+        raw_cosines.append(matrix_cosine_similarity_torch(S_rand_t, S_star_t))
+        centered_cosines.append(centered_matrix_cosine_similarity_torch(S_rand_t, S_star_t))
+
+    raw_cosines_np = np.asarray(raw_cosines, dtype=float)
+    centered_cosines_np = np.asarray(centered_cosines, dtype=float)
+
+    return {
+        "random_baseline_cosine_S_S_star": float(np.mean(raw_cosines_np)),
+        "random_baseline_centered_cosine_S_S_star": float(np.mean(centered_cosines_np)),
+        "random_baseline_cosine_S_S_star_mean": float(np.mean(raw_cosines_np)),
+        "random_baseline_cosine_S_S_star_std": float(np.std(raw_cosines_np)),
+        "random_baseline_centered_cosine_S_S_star_mean": float(np.mean(centered_cosines_np)),
+        "random_baseline_centered_cosine_S_S_star_std": float(np.std(centered_cosines_np)),
+        "n_random_baselines": int(n_random_baselines),
+    }
+
+
 def compute_run_metrics(
     model: TiedSingleHeadAttention,
     W_star_t: torch.Tensor,
@@ -209,9 +246,11 @@ def compute_run_metrics(
     master_seed: int,
     run_seed: int,
     random_baseline_seed: int,
-    S_rand_t: torch.Tensor,
+    random_baseline_metrics: dict[str, float],
     n_train: int,
     n_population: int,
+    n_train_loss_terms: int,
+    n_population_loss_terms: int,
     alpha: float | None,
     config_suffix: str,
 ):
@@ -232,10 +271,7 @@ def compute_run_metrics(
             "relative_error_S_S_star": relative_frobenius_error_torch(S_t, S_star_t),
         }
 
-        teacher_metrics.update({
-            "random_baseline_cosine_S_S_star": matrix_cosine_similarity_torch(S_rand_t, S_star_t),
-            "random_baseline_centered_cosine_S_S_star": centered_matrix_cosine_similarity_torch(S_rand_t, S_star_t),
-        })
+        teacher_metrics.update(random_baseline_metrics)
 
     metrics = {
         "alpha": float(alpha) if alpha is not None else None,
@@ -247,8 +283,11 @@ def compute_run_metrics(
         "population_data_seed": int(master_seed + 10_000_000),
         "student_init_seed": int(master_seed + 20_000_000),
         "random_baseline_seed": int(random_baseline_seed),
+        "n_random_baselines": int(random_baseline_metrics.get("n_random_baselines", 1)),
         "n_train": int(n_train),
         "n_population": int(n_population),
+        "n_train_loss_terms": int(n_train_loss_terms),
+        "n_population_loss_terms": int(n_population_loss_terms),
         "train_loss": float(train_loss),
         "population_risk": float(population_risk),
         "generalization_gap": float(population_risk - train_loss),
@@ -296,9 +335,23 @@ def run_experiment(config: dict) -> dict:
     n_train_override = config["training"].get("n_train")
     mask_value = float(config["data"]["mask_value"])
     masking_strategy = str(config["data"]["masking_strategy"])
+    masks_per_sample = int(config["data"].get("masks_per_sample", 1))
 
-    if masking_strategy != "random":
-        raise ValueError("The teacher-attention setting currently uses random masking only.")
+    allowed_masking_strategies = {"random", "last", "all", "k_random", "multi_random"}
+    if masking_strategy not in allowed_masking_strategies:
+        raise ValueError(
+            "Unknown masking_strategy. Use one of: 'random', 'last', 'all', 'k_random', 'multi_random'."
+        )
+
+    if masking_strategy not in {"k_random", "multi_random"} and masks_per_sample != 1:
+        raise ValueError(
+            "masks_per_sample should be 1 unless masking_strategy is 'k_random' or 'multi_random'."
+        )
+
+    if masking_strategy in {"k_random", "multi_random"} and not (1 <= masks_per_sample <= T):
+        raise ValueError(
+            "For k_random or multi_random, masks_per_sample must satisfy 1 <= masks_per_sample <= T."
+        )
 
     if r != d:
         raise ValueError("Current teacher-attention student setup expects r = d.")
@@ -372,6 +425,7 @@ def run_experiment(config: dict) -> dict:
         dtype=dtype,
         device=device,
         masking_strategy=masking_strategy,
+        masks_per_sample=masks_per_sample,
         normalize_sqrt_d=normalize_sqrt_d,
     )
 
@@ -388,16 +442,19 @@ def run_experiment(config: dict) -> dict:
         dtype=dtype,
         device=device,
         masking_strategy=masking_strategy,
+        masks_per_sample=masks_per_sample,
         normalize_sqrt_d=normalize_sqrt_d,
     )
 
     X_train_t = train_data["X"]
     X_tilde_train_t = train_data["X_tilde"]
     mask_train_t = train_data["mask_indices"]
+    n_train_loss_terms = int(X_train_t.shape[0])
 
     X_pop_t = pop_data["X"]
     X_tilde_pop_t = pop_data["X_tilde"]
     mask_pop_t = pop_data["mask_indices"]
+    n_population_loss_terms = int(X_pop_t.shape[0])
 
     torch.manual_seed(student_init_seed)
     model = TiedSingleHeadAttention(
@@ -409,9 +466,17 @@ def run_experiment(config: dict) -> dict:
         device=device,
     )
 
-    S_rand_t = generate_random_student_matrix_like_model(
+    eval_every = int(config["evaluation"].get("eval_every", 25))
+    track_attention_error = bool(
+        config["evaluation"].get("track_attention_error_during_training", True)
+    )
+    n_random_baselines = int(config["evaluation"].get("n_random_baselines", 10))
+
+    random_baseline_metrics = compute_random_baseline_metrics(
         model=model,
+        S_star_t=S_star_t,
         random_baseline_seed=random_baseline_seed,
+        n_random_baselines=n_random_baselines,
     )
 
     wandb_module = init_wandb_if_enabled(
@@ -421,12 +486,8 @@ def run_experiment(config: dict) -> dict:
         seed=run_seed,
     )
 
-    eval_every = int(config["evaluation"].get("eval_every", 25))
-    track_attention_error = bool(
-        config["evaluation"].get("track_attention_error_during_training", True)
-    )
     subset_size = int(config["evaluation"].get("attention_metric_subset_size", 512))
-    subset_size = min(subset_size, n_population)
+    subset_size = min(subset_size, n_population_loss_terms)
 
     X_tilde_metric_t = X_tilde_pop_t[:subset_size]
     A_star_metric_t = pop_data["A_star"][:subset_size]
@@ -446,15 +507,29 @@ def run_experiment(config: dict) -> dict:
             S_star_t,
         )
 
-        metrics["random_baseline_cosine_S_S_star"] = matrix_cosine_similarity_torch(
-            S_rand_t,
-            S_star_t,
-        )
+        metrics["random_baseline_cosine_S_S_star"] = random_baseline_metrics[
+            "random_baseline_cosine_S_S_star_mean"
+        ]
 
-        metrics["random_baseline_centered_cosine_S_S_star"] = centered_matrix_cosine_similarity_torch(
-            S_rand_t,
-            S_star_t,
-        )
+        metrics["random_baseline_centered_cosine_S_S_star"] = random_baseline_metrics[
+            "random_baseline_centered_cosine_S_S_star_mean"
+        ]
+
+        metrics["random_baseline_cosine_S_S_star_mean"] = random_baseline_metrics[
+            "random_baseline_cosine_S_S_star_mean"
+        ]
+
+        metrics["random_baseline_cosine_S_S_star_std"] = random_baseline_metrics[
+            "random_baseline_cosine_S_S_star_std"
+        ]
+
+        metrics["random_baseline_centered_cosine_S_S_star_mean"] = random_baseline_metrics[
+            "random_baseline_centered_cosine_S_S_star_mean"
+        ]
+
+        metrics["random_baseline_centered_cosine_S_S_star_std"] = random_baseline_metrics[
+            "random_baseline_centered_cosine_S_S_star_std"
+        ]
 
         return metrics
 
@@ -547,9 +622,11 @@ def run_experiment(config: dict) -> dict:
             master_seed=master_seed,
             run_seed=run_seed,
             random_baseline_seed=random_baseline_seed,
-            S_rand_t=S_rand_t,
+            random_baseline_metrics=random_baseline_metrics,
             n_train=actual_n_train,
             n_population=n_population,
+            n_train_loss_terms=n_train_loss_terms,
+            n_population_loss_terms=n_population_loss_terms,
             alpha=float(alpha) if n_train_override is None else None,
             config_suffix=config_suffix,
         )
@@ -718,15 +795,15 @@ def save_run_plots(results: dict, run_dir: Path) -> None:
     fig.savefig(run_dir / f"training_convergence_RR_PCA__{suffix}.png", bbox_inches="tight")
     plt.close(fig)
 
-    recovery_title_prefix = plots.build_teacher_attention_plot_title(
-        metric_title="Teacher recovery",
+    recovery_config_label = plots.format_teacher_attention_config_label(
         config=config,
         actual_n_train=actual_n_train,
+        include_seed=False,
     )
 
     for name, fig in plots.plot_teacher_recovery_history(
         history,
-        title_prefix=recovery_title_prefix,
+        title_prefix=recovery_config_label,
     ):
         fig.savefig(run_dir / f"{name}__{suffix}.png", bbox_inches="tight")
         plt.close(fig)

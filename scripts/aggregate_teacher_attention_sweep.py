@@ -260,6 +260,9 @@ def write_summary_csv(rows: list[dict], path: Path) -> None:
         "attention_vs_pca_relative_improvement",
         "pca_n_components",
         "cosine_S_S_star",
+        "centered_cosine_S_S_star",
+        "random_baseline_cosine_S_S_star",
+        "random_baseline_centered_cosine_S_S_star",
         "relative_error_S_S_star",
         "final_attention_level_error",
         "runtime_seconds",
@@ -370,13 +373,22 @@ def grouped_mean_std(
     return xs, means, stds
 
 
-def set_sweep_xlabel(ax, sweep_key: str) -> None:
+def set_sweep_xlabel(ax, sweep_key: str, fontsize = None) -> None:
     if sweep_key == "n_train":
-        ax.set_xlabel(r"$n_{\mathrm{train}}$")
+        if fontsize:
+            ax.set_xlabel(r"$n_{\mathrm{train}}$", fontsize=fontsize)
+        else:
+            ax.set_xlabel(r"$n_{\mathrm{train}}$")
     elif sweep_key == "alpha":
-        ax.set_xlabel(r"$\alpha$")
+        if fontsize:
+            ax.set_xlabel(r"$\alpha$", fontsize=fontsize)
+        else:
+            ax.set_xlabel(r"$\alpha$")
     else:
-        ax.set_xlabel(sweep_key)
+        if fontsize:
+            ax.set_xlabel(sweep_key, fontsize=fontsize)
+        else:
+            ax.set_xlabel(sweep_key)
 
 
 def plot_metrics_vs_sweep(
@@ -431,6 +443,166 @@ def plot_metrics_vs_sweep(
 
     return True
 
+def plot_cosine_with_random_baseline_bands(
+    rows: list[dict],
+    sweep_key: str,
+    title: str,
+    output_path: Path,
+    zoom: tuple[float | None, float | None] | None = None,
+) -> bool:
+    fig, ax = plt.subplots(figsize=(16, 10))
+    plotted = False
+
+    xs, learned_raw_mean, learned_raw_std = grouped_mean_std(
+        rows,
+        sweep_key,
+        "cosine_S_S_star",
+    )
+
+    if xs.size > 0:
+        ax.plot(
+            xs,
+            learned_raw_mean,
+            marker="o",
+            linewidth=3,
+            markersize=9,
+            label=r"Learned $\cos(S,S^\star)$",
+        )
+
+        if np.any(learned_raw_std > 0):
+            ax.fill_between(
+                xs,
+                learned_raw_mean - learned_raw_std,
+                learned_raw_mean + learned_raw_std,
+                alpha=0.15,
+            )
+
+        plotted = True
+
+    xs_base, raw_base_mean, _ = grouped_mean_std(
+        rows,
+        sweep_key,
+        "random_baseline_cosine_S_S_star_mean",
+    )
+
+    _, raw_base_std, _ = grouped_mean_std(
+        rows,
+        sweep_key,
+        "random_baseline_cosine_S_S_star_std",
+    )
+
+    if xs_base.size == 0:
+        xs_base, raw_base_mean, _ = grouped_mean_std(
+            rows,
+            sweep_key,
+            "random_baseline_cosine_S_S_star",
+        )
+        raw_base_std = np.zeros_like(raw_base_mean)
+
+    if xs_base.size > 0:
+        ax.plot(
+            xs_base,
+            raw_base_mean,
+            linestyle="--",
+            linewidth=3,
+            label=r"Random baseline mean $\cos(S_{\mathrm{rand}},S^\star)$",
+        )
+
+        if raw_base_std.size == raw_base_mean.size and np.any(raw_base_std > 0):
+            ax.fill_between(
+                xs_base,
+                raw_base_mean - raw_base_std,
+                raw_base_mean + raw_base_std,
+                alpha=0.15,
+            )
+
+        plotted = True
+
+    xs_centered, centered_mean, centered_std = grouped_mean_std(
+        rows,
+        sweep_key,
+        "centered_cosine_S_S_star",
+    )
+
+    if xs_centered.size > 0:
+        ax.plot(
+            xs_centered,
+            centered_mean,
+            marker="s",
+            linewidth=3,
+            markersize=9,
+            label="Learned centered cosine",
+        )
+
+        if np.any(centered_std > 0):
+            ax.fill_between(
+                xs_centered,
+                centered_mean - centered_std,
+                centered_mean + centered_std,
+                alpha=0.15,
+            )
+
+        plotted = True
+
+    xs_cbase, centered_base_mean, _ = grouped_mean_std(
+        rows,
+        sweep_key,
+        "random_baseline_centered_cosine_S_S_star_mean",
+    )
+
+    _, centered_base_std, _ = grouped_mean_std(
+        rows,
+        sweep_key,
+        "random_baseline_centered_cosine_S_S_star_std",
+    )
+
+    if xs_cbase.size == 0:
+        xs_cbase, centered_base_mean, _ = grouped_mean_std(
+            rows,
+            sweep_key,
+            "random_baseline_centered_cosine_S_S_star",
+        )
+        centered_base_std = np.zeros_like(centered_base_mean)
+
+    if xs_cbase.size > 0:
+        ax.plot(
+            xs_cbase,
+            centered_base_mean,
+            linestyle="--",
+            linewidth=3,
+            label="Random centered baseline mean",
+        )
+
+        if centered_base_std.size == centered_base_mean.size and np.any(centered_base_std > 0):
+            ax.fill_between(
+                xs_cbase,
+                centered_base_mean - centered_base_std,
+                centered_base_mean + centered_base_std,
+                alpha=0.15,
+            )
+
+        plotted = True
+
+    if not plotted:
+        plt.close(fig)
+        return False
+
+    set_sweep_xlabel(ax, sweep_key, fontsize=24)
+    ax.set_ylabel("Cosine similarity", fontsize=24)
+    ax.set_title(title, pad=16, fontsize=26)
+    ax.legend(frameon=True, fontsize=16) # smaller legend size, move where enough white space is available
+    ax.xaxis.set_tick_params(labelsize=20) # larger
+    ax.yaxis.set_tick_params(labelsize=20) # also
+    if zoom is not None:
+        xmin, xmax = zoom
+        if xmin is not None or xmax is not None:
+            ax.set_xlim(left=xmin, right=xmax)
+
+    fig.tight_layout()
+    fig.savefig(output_path, bbox_inches="tight")
+    plt.close(fig)
+
+    return True
 
 def zoom_suffix(zoom: tuple[float | None, float | None] | None) -> str:
     if zoom is None:
@@ -520,13 +692,17 @@ def generate_teacher_attention_summary_plots(
     sweep_dir: Path,
     sweep_key: str,
     base_config: dict | None = None,
-    zoom_ranges: list[tuple[float | None, float | None]] | None = None,
+    loss_zoom_ranges: list[tuple[float | None, float | None]] | None = None,
+    recovery_zoom_ranges: list[tuple[float | None, float | None]] | None = None,
 ) -> None:
     plots_dir = sweep_dir / "plots"
     plots_dir.mkdir(parents=True, exist_ok=True)
 
-    if zoom_ranges is None:
-        zoom_ranges = [(None, None)]
+    if loss_zoom_ranges is None:
+        loss_zoom_ranges = [(None, None)]
+
+    if recovery_zoom_ranges is None:
+        recovery_zoom_ranges = [(None, None)]
 
     loss_metrics = [
         ("train_loss", "Train loss"),
@@ -535,7 +711,7 @@ def generate_teacher_attention_summary_plots(
         ("pca_population_risk", "PCA"),
     ]
 
-    for zoom in zoom_ranges:
+    for zoom in loss_zoom_ranges:
         name = f"train_vs_population_vs_ridge_vs_pca_{sweep_key}_{zoom_suffix(zoom)}.png"
         plot_metrics_vs_sweep(
             rows=rows,
@@ -555,7 +731,7 @@ def generate_teacher_attention_summary_plots(
         ("population_risk", "Population risk"),
     ]
 
-    for zoom in zoom_ranges:
+    for zoom in loss_zoom_ranges:
         name = f"train_vs_population_{sweep_key}_{zoom_suffix(zoom)}.png"
         plot_metrics_vs_sweep(
             rows=rows,
@@ -576,7 +752,7 @@ def generate_teacher_attention_summary_plots(
         ("ridge_population_risk", "Ridge"),
     ]
 
-    for zoom in zoom_ranges:
+    for zoom in loss_zoom_ranges:
         name = f"train_vs_population_vs_ridge_{sweep_key}_{zoom_suffix(zoom)}.png"
         plot_metrics_vs_sweep(
             rows=rows,
@@ -592,22 +768,115 @@ def generate_teacher_attention_summary_plots(
         )
 
     recovery_metrics = [
-        ("cosine_S_S_star", r"$\cos(S,S^\star)$"),
-        ("relative_error_S_S_star", r"$\|S-S^\star\|_F/\|S^\star\|_F$"),
+        ("cosine_S_S_star", r"Raw cosine"),
+        ("centered_cosine_S_S_star", r"Centered cosine"),
+        ("relative_error_S_S_star", r"Relative Frobenius error"),
         ("final_attention_level_error", "Attention-level error"),
     ]
 
-    plot_metrics_vs_sweep(
-        rows=rows,
-        sweep_key=sweep_key,
-        metrics=recovery_metrics,
-        ylabel="Value",
-        title=build_teacher_attention_sweep_title(
-            "Teacher recovery metrics",
-            base_config,
+    for zoom in recovery_zoom_ranges:
+        name = f"teacher_recovery_metrics_{sweep_key}_{zoom_suffix(zoom)}.png"
+        plot_metrics_vs_sweep(
+            rows=rows,
+            sweep_key=sweep_key,
+            metrics=recovery_metrics,
+            ylabel="Value",
+            title=build_teacher_attention_sweep_title(
+                "Teacher recovery metrics",
+                base_config,
+            ),
+            output_path=plots_dir / name,
+            zoom=zoom,
+        )
+
+    cosine_only_metrics = [
+        ("cosine_S_S_star", r"$\cos(S,S^\star)$"),
+    ]
+
+    for zoom in recovery_zoom_ranges:
+        name = f"cosine_similarity_{sweep_key}_{zoom_suffix(zoom)}.png"
+        plot_metrics_vs_sweep(
+            rows=rows,
+            sweep_key=sweep_key,
+            metrics=cosine_only_metrics,
+            ylabel=r"$\cos(S,S^\star)$",
+            title=build_teacher_attention_sweep_title(
+                "Cosine similarity",
+                base_config,
+            ),
+            output_path=plots_dir / name,
+            zoom=zoom,
+        )
+
+    cosine_with_baselines_metrics = [
+        ("cosine_S_S_star", r"Learned $\cos(S,S^\star)$"),
+        ("random_baseline_cosine_S_S_star", r"Random baseline $\cos(S_{\mathrm{rand}},S^\star)$"),
+        ("centered_cosine_S_S_star", r"Learned centered cosine"),
+        ("random_baseline_centered_cosine_S_S_star", r"Random baseline centered cosine"),
+    ]
+
+    for zoom in recovery_zoom_ranges:
+        name = f"cosine_similarity_with_baselines_{sweep_key}_{zoom_suffix(zoom)}.png"
+        plot_metrics_vs_sweep(
+            rows=rows,
+            sweep_key=sweep_key,
+            metrics=cosine_with_baselines_metrics,
+            ylabel="Cosine similarity",
+            title=build_teacher_attention_sweep_title(
+                "Cosine similarity with baselines",
+                base_config,
+            ),
+            output_path=plots_dir / name,
+            zoom=zoom,
+        )
+        name2 = f"cosine_similarity_with_baselines_std_{sweep_key}_{zoom_suffix(zoom)}.png"
+        plot_cosine_with_random_baseline_bands(
+            rows=rows,
+            sweep_key=sweep_key,
+            title=build_teacher_attention_sweep_title(
+                "Cosine similarity with random-baselines",
+                base_config,
+            ),
+            output_path=plots_dir / name2,
+            zoom=zoom,
+        )
+
+    separate_recovery_plots = [
+        (
+            "centered_cosine_S_S_star",
+            "Centered cosine similarity",
+            "Centered cosine similarity",
+            f"centered_cosine_similarity_{sweep_key}.png",
         ),
-        output_path=plots_dir / f"teacher_recovery_metrics_{sweep_key}.png",
-    )
+        (
+            "relative_error_S_S_star",
+            r"$\|S-S^\star\|_F/\|S^\star\|_F$",
+            "Relative Frobenius error",
+            f"relative_error_S_S_star_{sweep_key}.png",
+        ),
+        (
+            "final_attention_level_error",
+            "Attention-level error",
+            "Attention-level error",
+            f"attention_level_error_{sweep_key}.png",
+        ),
+    ]
+
+    for metric_key, ylabel, metric_title, filename in separate_recovery_plots:
+        for zoom in recovery_zoom_ranges:
+            output_name = filename.replace(".png", f"_{zoom_suffix(zoom)}.png")
+            plot_metrics_vs_sweep(
+                rows=rows,
+                sweep_key=sweep_key,
+                metrics=[(metric_key, metric_title)],
+                ylabel=ylabel,
+                title=build_teacher_attention_sweep_title(
+                    metric_title,
+                    base_config,
+                ),
+                output_path=plots_dir / output_name,
+                zoom=zoom,
+            )
 
     gap_metrics = [
         ("generalization_gap", "Generalization gap"),
@@ -759,7 +1028,8 @@ def aggregate_one_sweep(sweep_dir: Path, force: bool = False) -> None:
         sweep_dir=sweep_dir,
         sweep_key=sweep_key,
         base_config=metadata["base_config"],
-        zoom_ranges=[(None, None), (0, 500), (0, 1000), (0, 2000)],
+        loss_zoom_ranges=[(None, None), (0, 500), (0, 1000), (0, 2000)],
+        recovery_zoom_ranges=[(None, None), (0, 2500), (0, 5000), (0, 10000)],
     )
 
     print(f"[done] Aggregated {sweep_dir} (sweep key: {sweep_key})")

@@ -1,19 +1,19 @@
 #!/bin/bash
 #SBATCH --job-name=teacher_ntrain
-#SBATCH --output=logs/teacher/teacher_ntrain_%A_%a.out
-#SBATCH --error=logs/teacher/teacher_ntrain_%A_%a.err
+#SBATCH --output=logs/quadratic_teacher/teacher_ntrain_%A_%a.out
+#SBATCH --error=logs/quadratic_teacher/teacher_ntrain_%A_%a.err
 #SBATCH --partition=academic
 #SBATCH --time=24:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mail-user=emma.anastassova@epfl.ch
 #SBATCH --mail-type=FAIL
 #SBATCH --mem=4G
-#SBATCH --array=0-25 # %13 
+#SBATCH --array=0-36%18 # %18 
 
 set -euo pipefail
 
-# CONFIG_PATH=$1
-CONFIG_PATH="/home/anastass/spoc-masked-attention/configs/default-teacher-attention.yaml"
+CONFIG_PATH=$1
+# CONFIG_PATH="/home/anastass/spoc-masked-attention/configs/default-teacher-attention-maskrandom.yaml"
 
 
 # ====== READ CONFIG INFO ======
@@ -63,8 +63,8 @@ CONFIG_NAME=$(basename "$CONFIG_PATH" .yaml)
 SWEEP_TIMESTAMP=${SLURM_ARRAY_JOB_ID:-$SLURM_JOB_ID}
 SEED=42
 
-SWEEP_DIR_REL="results/teacher-attention/mask-${MASKING_STRATEGY}/iter_${ITERS}/cosine-sim/${CONFIG_NAME}/${CONFIG_NAME}_seed_${SEED}_${SWEEP_TIMESTAMP}"
-NTRAIN_CSV="10,20,30,40,50,60,70,80,90,100,125,150,175,200,250,300,400,500,750,1000,1250,1500,1750,2000,2500,5000"
+SWEEP_DIR_REL="results/teacher-attention/iter_${ITERS}/cosine-sim/${CONFIG_NAME}/${CONFIG_NAME}_seed_${SEED}_${SWEEP_TIMESTAMP}"
+NTRAIN_CSV="10,20,30,40,50,60,70,80,90,100,125,150,175,200,250,300,400,500,750,1000,1250,1500,1750,2000,2500,3000,3500,4000,5000,6000,7000,7500,8000,9000,10000,12500,15000" # adding 3000, 3500, 4000, 6000, 7000, 7500, 8000, 9000, 10000, 12500,15000
 
 # ====== SETUP ======
 PROJECT_DIR=/home/anastass/spoc-masked-attention

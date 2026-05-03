@@ -1,4 +1,4 @@
-SWEEP_ROOT="results/teacher-attention/mask-random/iter_5000/tuning-scaled-gaussian-init/"
+SWEEP_ROOT="results/teacher-attention/iter_5000/"
 
 # ====== SETUP ======
 PROJECT_DIR=/home/anastass/spoc-masked-attention
@@ -7,7 +7,6 @@ cd "$PROJECT_DIR"
 module purge
 module load gcc/13.2.0
 module load python/3.11.7
-
 source .venv/bin/activate
 
 # ====== RUN ======

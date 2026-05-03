@@ -12,7 +12,7 @@ cd "$PROJECT_DIR"
 
 mkdir -p logs/grids
 
-CONFIG_DIR="/home/anastass/spoc-masked-attention/configs/teacher_attention/tuning-scaled-gaussian-init/"
+CONFIG_DIR="/home/anastass/spoc-masked-attention/configs/teacher_attention/masking-schemes-dimension_d/"
 
 if [ ! -d "$CONFIG_DIR" ]; then
   echo "Config directory does not exist: $CONFIG_DIR"
@@ -33,5 +33,5 @@ echo "Number of configs: ${#CONFIGS[@]}"
 
 for config in "${CONFIGS[@]}"; do
   echo "Submitting n_train sweep for $config"
-  sbatch slurm/linear_ntrain_teacher_attention.sh "$config"
+  sbatch slurm/quadratic_ntrain_teacher_attention.sh "$config"
 done

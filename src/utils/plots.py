@@ -150,7 +150,7 @@ def format_teacher_label(teacher_cfg: dict | None) -> str:
 def format_teacher_attention_config_label(
     config: dict | None,
     actual_n_train: int | None = None,
-    include_seed: bool = True,
+    include_seed: bool = False,
 ) -> str:
     if config is None:
         return ""
@@ -223,7 +223,7 @@ def build_teacher_attention_plot_title(
     config_label = format_teacher_attention_config_label(
         config,
         actual_n_train=actual_n_train,
-        include_seed=True,
+        include_seed=False,
     )
     if config_label:
         return f"{metric_title}\n{config_label}"
@@ -294,7 +294,7 @@ def format_config_label(
 
 
 def build_plot_title(metric_title: str, config: dict, actual_n_train: int | None = None) -> str:
-    config_label = format_config_label(config, actual_n_train=actual_n_train, include_seed=True)
+    config_label = format_config_label(config, actual_n_train=actual_n_train, include_seed=False)
     if config_label:
         return f"{metric_title}\n{config_label}"
     return metric_title
@@ -578,7 +578,7 @@ def plot_eval_metric_history(
 
 def plot_teacher_recovery_history(
     history: dict[str, list[float]],
-    title_prefix: str = "Teacher recovery",
+    title_prefix: str = "",
 ) -> list:
     """Create plots for teacher-recovery metrics tracked during training."""
     figures = []
@@ -587,14 +587,20 @@ def plot_teacher_recovery_history(
     if not steps:
         return figures
 
+    def make_title(metric_title: str) -> str:
+        if title_prefix:
+            return f"{metric_title}\n{title_prefix}"
+        return metric_title
+
     if "cosine_S_S_star" in history:
         fig, ax = plt.subplots(figsize=(10, 6))
         ax.plot(steps, history["cosine_S_S_star"], linewidth=2, label="Cosine similarity")
         ax.set_xlabel("Iteration")
         ax.set_ylabel(r"$\cos(S, S^\star)$")
-        ax.set_title(f"{title_prefix}: cosine similarity")
+        ax.set_title(make_title("Cosine similarity"))
         ax.legend()
         ax.grid(False)
+        fig.tight_layout()
         figures.append(("cosine_similarity", fig))
 
     cosine_keys = [
@@ -602,16 +608,20 @@ def plot_teacher_recovery_history(
         "centered_cosine_S_S_star",
         "random_baseline_cosine_S_S_star",
         "random_baseline_centered_cosine_S_S_star",
+        "random_baseline_cosine_S_S_star_mean",
+        "random_baseline_cosine_S_S_star_std",
+        "random_baseline_centered_cosine_S_S_star_mean",
+        "random_baseline_centered_cosine_S_S_star_std",
     ]
 
     if any(key in history for key in cosine_keys):
-        fig, ax = plt.subplots(figsize=(10, 6))
+        fig, ax = plt.subplots(figsize=(12, 8))
 
         if "cosine_S_S_star" in history:
             ax.plot(
                 steps,
                 history["cosine_S_S_star"],
-                linewidth=2,
+                linewidth=3,
                 label=r"Learned $\cos(S, S^\star)$",
             )
 
@@ -619,7 +629,7 @@ def plot_teacher_recovery_history(
             ax.plot(
                 steps,
                 history["centered_cosine_S_S_star"],
-                linewidth=2,
+                linewidth=3,
                 label=r"Learned centered cosine",
             )
 
@@ -627,7 +637,7 @@ def plot_teacher_recovery_history(
             ax.plot(
                 steps,
                 history["random_baseline_cosine_S_S_star"],
-                linewidth=2,
+                linewidth=2.5,
                 linestyle="--",
                 label=r"Random baseline $\cos(S_{\mathrm{rand}}, S^\star)$",
             )
@@ -636,26 +646,134 @@ def plot_teacher_recovery_history(
             ax.plot(
                 steps,
                 history["random_baseline_centered_cosine_S_S_star"],
-                linewidth=2,
+                linewidth=2.5,
                 linestyle="--",
                 label=r"Random baseline centered cosine",
             )
 
         ax.set_xlabel("Iteration")
         ax.set_ylabel("Cosine similarity")
-        ax.set_title(f"{title_prefix}: cosine similarity and baselines")
-        ax.legend()
+        ax.set_title(make_title("Cosine similarity with baselines"), fontsize=20)
+        ax.legend(fontsize=18, frameon=False)
         ax.grid(False)
+        fig.tight_layout()
         figures.append(("cosine_similarity_with_baselines", fig))
+
+        has_raw_band = (
+            "random_baseline_cosine_S_S_star_mean" in history
+            and "random_baseline_cosine_S_S_star_std" in history
+        )
+        has_centered_band = (
+            "random_baseline_centered_cosine_S_S_star_mean" in history
+            and "random_baseline_centered_cosine_S_S_star_std" in history
+        )
+
+        if has_raw_band or has_centered_band:
+            fig, ax = plt.subplots(figsize=(12, 8))
+
+            if "cosine_S_S_star" in history:
+                ax.plot(
+                    steps,
+                    history["cosine_S_S_star"],
+                    linewidth=3,
+                    label=r"Learned $\cos(S, S^\star)$",
+                )
+
+            if "centered_cosine_S_S_star" in history:
+                ax.plot(
+                    steps,
+                    history["centered_cosine_S_S_star"],
+                    linewidth=3,
+                    label=r"Learned centered cosine",
+                )
+
+            if has_raw_band:
+                raw_mean = np.asarray(
+                    history["random_baseline_cosine_S_S_star_mean"],
+                    dtype=float,
+                )
+                raw_std = np.asarray(
+                    history["random_baseline_cosine_S_S_star_std"],
+                    dtype=float,
+                )
+
+                ax.plot(
+                    steps,
+                    raw_mean,
+                    linewidth=2.5,
+                    linestyle="--",
+                    label=r"Random baseline mean $\cos(S_{\mathrm{rand}}, S^\star)$",
+                )
+
+                if raw_mean.shape == raw_std.shape:
+                    ax.fill_between(
+                        steps,
+                        raw_mean - raw_std,
+                        raw_mean + raw_std,
+                        alpha=0.15,
+                    )
+
+            elif "random_baseline_cosine_S_S_star" in history:
+                ax.plot(
+                    steps,
+                    history["random_baseline_cosine_S_S_star"],
+                    linewidth=2.5,
+                    linestyle="--",
+                    label=r"Random baseline $\cos(S_{\mathrm{rand}}, S^\star)$",
+                )
+
+            if has_centered_band:
+                centered_mean = np.asarray(
+                    history["random_baseline_centered_cosine_S_S_star_mean"],
+                    dtype=float,
+                )
+                centered_std = np.asarray(
+                    history["random_baseline_centered_cosine_S_S_star_std"],
+                    dtype=float,
+                )
+
+                ax.plot(
+                    steps,
+                    centered_mean,
+                    linewidth=2.5,
+                    linestyle="--",
+                    label=r"Random centered baseline mean",
+                )
+
+                if centered_mean.shape == centered_std.shape:
+                    ax.fill_between(
+                        steps,
+                        centered_mean - centered_std,
+                        centered_mean + centered_std,
+                        alpha=0.15,
+                    )
+
+            elif "random_baseline_centered_cosine_S_S_star" in history:
+                ax.plot(
+                    steps,
+                    history["random_baseline_centered_cosine_S_S_star"],
+                    linewidth=2.5,
+                    linestyle="--",
+                    label=r"Random baseline centered cosine",
+                )
+
+            ax.set_xlabel("Iteration")
+            ax.set_ylabel("Cosine similarity")
+            ax.set_title(make_title("Cosine similarity with random-baseline"), fontsize=20)
+            ax.legend(fontsize=18, frameon=False)
+            ax.grid(False)
+            fig.tight_layout()
+            figures.append(("cosine_similarity_with_baselines_std", fig))
 
     if "relative_error_S_S_star" in history:
         fig, ax = plt.subplots(figsize=(10, 6))
         ax.plot(steps, history["relative_error_S_S_star"], linewidth=2, label="Relative Frobenius error")
         ax.set_xlabel("Iteration")
         ax.set_ylabel(r"$\|S - S^\star\|_F / \|S^\star\|_F$")
-        ax.set_title(f"{title_prefix}: relative Frobenius error")
+        ax.set_title(make_title("Relative Frobenius error"))
         ax.legend()
         ax.grid(False)
+        fig.tight_layout()
         figures.append(("relative_error", fig))
 
     if "attention_level_error" in history:
@@ -663,9 +781,10 @@ def plot_teacher_recovery_history(
         ax.plot(steps, history["attention_level_error"], linewidth=2, label="Attention-level error")
         ax.set_xlabel("Iteration")
         ax.set_ylabel("Attention-level error")
-        ax.set_title(f"{title_prefix}: attention-level error")
+        ax.set_title(make_title("Attention-level error"))
         ax.legend()
         ax.grid(False)
+        fig.tight_layout()
         figures.append(("attention_level_error", fig))
 
     return figures

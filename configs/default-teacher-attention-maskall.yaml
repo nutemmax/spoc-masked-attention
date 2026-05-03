@@ -8,7 +8,8 @@ data:
   T: 5
   d: 50
   mask_value: 1.0
-  masking_strategy: random
+  masking_strategy: all
+  masks_per_sample: 1
 
 teacher:
   init: standard_gaussian
@@ -32,10 +33,11 @@ training:
 
 evaluation:
   n_population: 5000
-  eval_every: 5
+  eval_every: 25
   track_attention_error_during_training: true
-  attention_metric_subset_size: 32
+  attention_metric_subset_size: 256
   pca_n_components: 50
+  n_random_baselines: 10
 
 logging:
   use_wandb: false
