@@ -165,18 +165,6 @@ def build_sweep_metadata(run_configs: list[dict], sweep_key: str) -> dict | None
         elif sweep_key == "n_train":
             base_config["training"]["n_train"] = None
 
-    # seeds = sorted({
-    #     int(cfg["experiment"]["seed"])
-    #     for cfg in run_configs
-    #     if cfg.get("experiment", {}).get("seed") is not None
-    # })
-
-    # metadata = {
-    #     "sweep_key": sweep_key,
-    #     "seeds": seeds,
-    #     "base_config": base_config,
-    # }
-
     master_seeds = sorted({
         int(cfg["experiment"]["master_seed"])
         for cfg in run_configs
@@ -394,7 +382,7 @@ def set_sweep_xlabel(ax, sweep_key: str, fontsize = None) -> None:
 def plot_metrics_vs_sweep(
     rows: list[dict],
     sweep_key: str,
-    metrics: list[tuple[str, str]],
+    metrics: list[tuple],
     ylabel: str,
     title: str,
     output_path: Path,
@@ -404,8 +392,30 @@ def plot_metrics_vs_sweep(
 
     plotted = False
 
-    for metric_key, label in metrics:
-        xs, means, stds = grouped_mean_std(rows, sweep_key, metric_key)
+    for metric in metrics:
+        if len(metric) == 2:
+            metric_key, label = metric
+            std_key = None
+            fallback_key = None
+        elif len(metric) == 3:
+            metric_key, label, std_key = metric
+            fallback_key = None
+        elif len(metric) == 4:
+            metric_key, label, std_key, fallback_key = metric
+        else:
+            raise ValueError(
+                "Each metric must be either "
+                "(metric_key, label), "
+                "(metric_key, label, std_key), or "
+                "(metric_key, label, std_key, fallback_key)."
+            )
+
+        xs, means, grouped_stds = grouped_mean_std(rows, sweep_key, metric_key)
+
+        if xs.size == 0 and fallback_key is not None:
+            xs, means, grouped_stds = grouped_mean_std(rows, sweep_key, fallback_key)
+            std_key = None
+
         if xs.size == 0:
             continue
 
@@ -418,8 +428,18 @@ def plot_metrics_vs_sweep(
             label=label,
         )
 
-        if np.any(stds > 0):
-            ax.fill_between(xs, means - stds, means + stds, alpha=0.2)
+        band_stds = grouped_stds
+
+        if std_key is not None:
+            xs_std, std_means, _ = grouped_mean_std(rows, sweep_key, std_key)
+
+            if xs_std.size == xs.size and np.allclose(xs_std, xs):
+                band_stds = std_means
+            else:
+                band_stds = np.zeros_like(means)
+
+        if np.any(band_stds > 0):
+            ax.fill_between(xs, means - band_stds, means + band_stds, alpha=0.2)
 
         plotted = True
 
@@ -443,166 +463,6 @@ def plot_metrics_vs_sweep(
 
     return True
 
-def plot_cosine_with_random_baseline_bands(
-    rows: list[dict],
-    sweep_key: str,
-    title: str,
-    output_path: Path,
-    zoom: tuple[float | None, float | None] | None = None,
-) -> bool:
-    fig, ax = plt.subplots(figsize=(16, 10))
-    plotted = False
-
-    xs, learned_raw_mean, learned_raw_std = grouped_mean_std(
-        rows,
-        sweep_key,
-        "cosine_S_S_star",
-    )
-
-    if xs.size > 0:
-        ax.plot(
-            xs,
-            learned_raw_mean,
-            marker="o",
-            linewidth=3,
-            markersize=9,
-            label=r"Learned $\cos(S,S^\star)$",
-        )
-
-        if np.any(learned_raw_std > 0):
-            ax.fill_between(
-                xs,
-                learned_raw_mean - learned_raw_std,
-                learned_raw_mean + learned_raw_std,
-                alpha=0.15,
-            )
-
-        plotted = True
-
-    xs_base, raw_base_mean, _ = grouped_mean_std(
-        rows,
-        sweep_key,
-        "random_baseline_cosine_S_S_star_mean",
-    )
-
-    _, raw_base_std, _ = grouped_mean_std(
-        rows,
-        sweep_key,
-        "random_baseline_cosine_S_S_star_std",
-    )
-
-    if xs_base.size == 0:
-        xs_base, raw_base_mean, _ = grouped_mean_std(
-            rows,
-            sweep_key,
-            "random_baseline_cosine_S_S_star",
-        )
-        raw_base_std = np.zeros_like(raw_base_mean)
-
-    if xs_base.size > 0:
-        ax.plot(
-            xs_base,
-            raw_base_mean,
-            linestyle="--",
-            linewidth=3,
-            label=r"Random baseline mean $\cos(S_{\mathrm{rand}},S^\star)$",
-        )
-
-        if raw_base_std.size == raw_base_mean.size and np.any(raw_base_std > 0):
-            ax.fill_between(
-                xs_base,
-                raw_base_mean - raw_base_std,
-                raw_base_mean + raw_base_std,
-                alpha=0.15,
-            )
-
-        plotted = True
-
-    xs_centered, centered_mean, centered_std = grouped_mean_std(
-        rows,
-        sweep_key,
-        "centered_cosine_S_S_star",
-    )
-
-    if xs_centered.size > 0:
-        ax.plot(
-            xs_centered,
-            centered_mean,
-            marker="s",
-            linewidth=3,
-            markersize=9,
-            label="Learned centered cosine",
-        )
-
-        if np.any(centered_std > 0):
-            ax.fill_between(
-                xs_centered,
-                centered_mean - centered_std,
-                centered_mean + centered_std,
-                alpha=0.15,
-            )
-
-        plotted = True
-
-    xs_cbase, centered_base_mean, _ = grouped_mean_std(
-        rows,
-        sweep_key,
-        "random_baseline_centered_cosine_S_S_star_mean",
-    )
-
-    _, centered_base_std, _ = grouped_mean_std(
-        rows,
-        sweep_key,
-        "random_baseline_centered_cosine_S_S_star_std",
-    )
-
-    if xs_cbase.size == 0:
-        xs_cbase, centered_base_mean, _ = grouped_mean_std(
-            rows,
-            sweep_key,
-            "random_baseline_centered_cosine_S_S_star",
-        )
-        centered_base_std = np.zeros_like(centered_base_mean)
-
-    if xs_cbase.size > 0:
-        ax.plot(
-            xs_cbase,
-            centered_base_mean,
-            linestyle="--",
-            linewidth=3,
-            label="Random centered baseline mean",
-        )
-
-        if centered_base_std.size == centered_base_mean.size and np.any(centered_base_std > 0):
-            ax.fill_between(
-                xs_cbase,
-                centered_base_mean - centered_base_std,
-                centered_base_mean + centered_base_std,
-                alpha=0.15,
-            )
-
-        plotted = True
-
-    if not plotted:
-        plt.close(fig)
-        return False
-
-    set_sweep_xlabel(ax, sweep_key, fontsize=24)
-    ax.set_ylabel("Cosine similarity", fontsize=24)
-    ax.set_title(title, pad=16, fontsize=26)
-    ax.legend(frameon=True, fontsize=16) # smaller legend size, move where enough white space is available
-    ax.xaxis.set_tick_params(labelsize=20) # larger
-    ax.yaxis.set_tick_params(labelsize=20) # also
-    if zoom is not None:
-        xmin, xmax = zoom
-        if xmin is not None or xmax is not None:
-            ax.set_xlim(left=xmin, right=xmax)
-
-    fig.tight_layout()
-    fig.savefig(output_path, bbox_inches="tight")
-    plt.close(fig)
-
-    return True
 
 def zoom_suffix(zoom: tuple[float | None, float | None] | None) -> str:
     if zoom is None:
@@ -809,10 +669,26 @@ def generate_teacher_attention_summary_plots(
         )
 
     cosine_with_baselines_metrics = [
-        ("cosine_S_S_star", r"Learned $\cos(S,S^\star)$"),
-        ("random_baseline_cosine_S_S_star", r"Random baseline $\cos(S_{\mathrm{rand}},S^\star)$"),
-        ("centered_cosine_S_S_star", r"Learned centered cosine"),
-        ("random_baseline_centered_cosine_S_S_star", r"Random baseline centered cosine"),
+        (
+            "cosine_S_S_star",
+            r"Learned $\cos(S,S^\star)$",
+        ),
+        (
+            "random_baseline_cosine_S_S_star_mean",
+            r"Random baseline $\cos(S_{\mathrm{rand}},S^\star)$",
+            "random_baseline_cosine_S_S_star_std",
+            "random_baseline_cosine_S_S_star",
+        ),
+        (
+            "centered_cosine_S_S_star",
+            r"Learned centered cosine",
+        ),
+        (
+            "random_baseline_centered_cosine_S_S_star_mean",
+            r"Random baseline centered cosine",
+            "random_baseline_centered_cosine_S_S_star_std",
+            "random_baseline_centered_cosine_S_S_star",
+        ),
     ]
 
     for zoom in recovery_zoom_ranges:
@@ -827,17 +703,6 @@ def generate_teacher_attention_summary_plots(
                 base_config,
             ),
             output_path=plots_dir / name,
-            zoom=zoom,
-        )
-        name2 = f"cosine_similarity_with_baselines_std_{sweep_key}_{zoom_suffix(zoom)}.png"
-        plot_cosine_with_random_baseline_bands(
-            rows=rows,
-            sweep_key=sweep_key,
-            title=build_teacher_attention_sweep_title(
-                "Cosine similarity with random-baselines",
-                base_config,
-            ),
-            output_path=plots_dir / name2,
             zoom=zoom,
         )
 

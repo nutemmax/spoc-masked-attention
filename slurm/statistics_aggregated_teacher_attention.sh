@@ -1,4 +1,4 @@
-SWEEP_ROOT="results/teacher-attention/iter_5000/"
+SWEEP_ROOT="results/teacher-attention/iter_5000/cosine-sim/"
 
 # ====== SETUP ======
 PROJECT_DIR=/home/anastass/spoc-masked-attention
