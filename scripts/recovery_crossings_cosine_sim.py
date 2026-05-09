@@ -302,11 +302,8 @@ def grouped_mean_by_ntrain(rows: list[dict]) -> list[dict]:
 
     keys = [
         "cosine_S_S_star",
-        "centered_cosine_S_S_star",
         "random_baseline_cosine_S_S_star",
         "random_baseline_cosine_S_S_star_mean",
-        "random_baseline_centered_cosine_S_S_star",
-        "random_baseline_centered_cosine_S_S_star_mean",
     ]
 
     for row in rows:
@@ -361,7 +358,23 @@ def first_crossing_against_baseline(
         if learned is None or baseline is None:
             continue
 
-        if float(learned) > float(baseline):
+        if float(learned) >= float(baseline):
+            return int(row["n_train"]), float(learned), float(baseline)
+
+    return None, None, None
+
+def first_crossing_against_constant_baseline(
+    rows_by_ntrain: list[dict],
+    learned_key: str,
+    baseline: float,
+) -> tuple[int | None, float | None, float | None]:
+    for row in rows_by_ntrain:
+        learned = row.get(learned_key)
+
+        if learned is None:
+            continue
+
+        if float(learned) >= float(baseline):
             return int(row["n_train"]), float(learned), float(baseline)
 
     return None, None, None
@@ -388,6 +401,27 @@ def add_crossing(
     out[f"{prefix}_cross_baseline"] = baseline_threshold
 
 
+def add_constant_crossing(
+    out: dict[str, object],
+    rows_by_ntrain: list[dict],
+    d: int,
+    prefix: str,
+    learned_key: str,
+    baseline: float,
+) -> None:
+    ntrain, learned_value, baseline_threshold = first_crossing_against_constant_baseline(
+        rows_by_ntrain=rows_by_ntrain,
+        learned_key=learned_key,
+        baseline=baseline,
+    )
+
+    out[f"{prefix}_cross_ntrain"] = ntrain
+    out[f"{prefix}_cross_alpha"] = ntrain / (d ** 2) if ntrain is not None else None
+    out[f"{prefix}_cross_alpha_linear"] = ntrain / d if ntrain is not None else None
+    out[f"{prefix}_cross_value"] = learned_value
+    out[f"{prefix}_cross_baseline"] = baseline_threshold
+
+
 def analyze_summary(summary_path: Path) -> dict | None:
     rows = read_csv_rows(summary_path)
     if not rows:
@@ -404,19 +438,22 @@ def analyze_summary(summary_path: Path) -> dict | None:
         return None
 
     d = int(metadata["d"])
+    clt_baseline = 1.0 / math.sqrt(d)
 
     out: dict[str, object] = {
         **metadata,
+        "clt_baseline": clt_baseline,
         "min_ntrain_available": min(row["n_train"] for row in rows_by_ntrain),
         "max_ntrain_available": max(row["n_train"] for row in rows_by_ntrain),
         "n_points": len(rows_by_ntrain),
     }
 
+    # random PSD baseline
     add_crossing(
         out=out,
         rows_by_ntrain=rows_by_ntrain,
         d=d,
-        prefix="raw_vs_raw_random",
+        prefix="random_psd",
         learned_key="cosine_S_S_star",
         baseline_mean_keys=[
             "random_baseline_cosine_S_S_star_mean",
@@ -424,28 +461,14 @@ def analyze_summary(summary_path: Path) -> dict | None:
         ],
     )
 
-    add_crossing(
+    # CLT baseline: 1/sqrt(d)
+    add_constant_crossing(
         out=out,
         rows_by_ntrain=rows_by_ntrain,
         d=d,
-        prefix="centered_vs_centered_random",
-        learned_key="centered_cosine_S_S_star",
-        baseline_mean_keys=[
-            "random_baseline_centered_cosine_S_S_star_mean",
-            "random_baseline_centered_cosine_S_S_star",
-        ],
-    )
-
-    add_crossing(
-        out=out,
-        rows_by_ntrain=rows_by_ntrain,
-        d=d,
-        prefix="centered_vs_raw_random",
-        learned_key="centered_cosine_S_S_star",
-        baseline_mean_keys=[
-            "random_baseline_cosine_S_S_star_mean",
-            "random_baseline_cosine_S_S_star",
-        ],
+        prefix="clt",
+        learned_key="cosine_S_S_star",
+        baseline=clt_baseline,
     )
 
     return out
@@ -461,24 +484,19 @@ def write_csv(rows: list[dict], path: Path) -> None:
         "mask_label",
         "d",
         "seed",
+        "clt_baseline",
 
-        "raw_vs_raw_random_cross_ntrain",
-        "raw_vs_raw_random_cross_alpha",
-        "raw_vs_raw_random_cross_alpha_linear",
-        "raw_vs_raw_random_cross_value",
-        "raw_vs_raw_random_cross_baseline",
+        "random_psd_cross_ntrain",
+        "random_psd_cross_alpha",
+        "random_psd_cross_alpha_linear",
+        "random_psd_cross_value",
+        "random_psd_cross_baseline",
 
-        "centered_vs_centered_random_cross_ntrain",
-        "centered_vs_centered_random_cross_alpha",
-        "centered_vs_centered_random_cross_alpha_linear",
-        "centered_vs_centered_random_cross_value",
-        "centered_vs_centered_random_cross_baseline",
-
-        "centered_vs_raw_random_cross_ntrain",
-        "centered_vs_raw_random_cross_alpha",
-        "centered_vs_raw_random_cross_alpha_linear",
-        "centered_vs_raw_random_cross_value",
-        "centered_vs_raw_random_cross_baseline",
+        "clt_cross_ntrain",
+        "clt_cross_alpha",
+        "clt_cross_alpha_linear",
+        "clt_cross_value",
+        "clt_cross_baseline",
 
         "min_ntrain_available",
         "max_ntrain_available",
@@ -500,7 +518,6 @@ def write_csv(rows: list[dict], path: Path) -> None:
         writer.writeheader()
         writer.writerows(rows)
 
-
 def aggregate_crossings(rows: list[dict]) -> list[dict]:
     grouped: dict[tuple[str, str, int], list[dict]] = {}
 
@@ -515,17 +532,13 @@ def aggregate_crossings(rows: list[dict]) -> list[dict]:
         grouped.setdefault((str(config_signature), str(mask_label), int(d)), []).append(row)
 
     metric_keys = [
-        "raw_vs_raw_random_cross_ntrain",
-        "raw_vs_raw_random_cross_alpha",
-        "raw_vs_raw_random_cross_alpha_linear",
+        "random_psd_cross_ntrain",
+        "random_psd_cross_alpha",
+        "random_psd_cross_alpha_linear",
 
-        "centered_vs_centered_random_cross_ntrain",
-        "centered_vs_centered_random_cross_alpha",
-        "centered_vs_centered_random_cross_alpha_linear",
-
-        "centered_vs_raw_random_cross_ntrain",
-        "centered_vs_raw_random_cross_alpha",
-        "centered_vs_raw_random_cross_alpha_linear",
+        "clt_cross_ntrain",
+        "clt_cross_alpha",
+        "clt_cross_alpha_linear",
     ]
 
     out = []
@@ -560,7 +573,6 @@ def aggregate_crossings(rows: list[dict]) -> list[dict]:
         out.append(item)
 
     return out
-
 
 def plot_curve(
     rows: list[dict],
@@ -603,144 +615,109 @@ def plot_curve(
     return True
 
 
-def plot_crossings_for_mask(rows: list[dict], mask_label: str, output_dir: Path) -> None:
+def plot_crossings_for_mask(
+    rows: list[dict],
+    mask_label: str,
+    output_dir: Path,
+    prefix: str,
+    baseline_label: str,
+    filename_tag: str,
+) -> None:
     mask_rows = [row for row in rows if row.get("mask_label") == mask_label]
     if not mask_rows:
         return
 
-    curves = [
-        (
-            "raw_vs_raw_random_cross_ntrain_mean",
-            "raw_vs_raw_random_cross_ntrain_std",
-            r"cosine vs random baseline",
-        ),
-        (
-            "centered_vs_centered_random_cross_ntrain_mean",
-            "centered_vs_centered_random_cross_ntrain_std",
-            r"centered cosine vs centered random baseline",
-        ),
-        (
-            "centered_vs_raw_random_cross_ntrain_mean",
-            "centered_vs_raw_random_cross_ntrain_std",
-            r"centered cosine vs random baseline",
-        ),
-    ]
-
+    # n_cross over d
     fig, ax = plt.subplots(figsize=(14, 10))
 
-    plotted = False
-    for mean_key, std_key, label in curves:
-        plotted |= plot_curve(
-            rows=mask_rows,
-            x_key="d",
-            y_mean_key=mean_key,
-            y_std_key=std_key,
-            label=label,
-            ax=ax,
-        )
+    plotted = plot_curve(
+        rows=mask_rows,
+        x_key="d",
+        y_mean_key=f"{prefix}_cross_ntrain_mean",
+        y_std_key=f"{prefix}_cross_ntrain_std",
+        label=baseline_label,
+        ax=ax,
+    )
 
     if plotted:
         ax.set_xlabel(r"$d$")
         ax.set_ylabel(r"min $n_{\mathrm{train}}$")
         ax.set_title(
-            f"Minimum sample size to beat the random baseline\n"
+            f"Minimum sample size to beat the {baseline_label}\n"
             f"{mask_label}"
         )
         ax.legend(frameon=True)
         fig.tight_layout()
-        fig.savefig(output_dir / f"min_ntrain_vs_d__{mask_label}.png", bbox_inches="tight")
+        fig.savefig(
+            output_dir / f"min_ntrain_vs_d__{filename_tag}__{mask_label}.png",
+            bbox_inches="tight",
+        )
     plt.close(fig)
 
-    alpha_curves = [
-        (
-            "raw_vs_raw_random_cross_alpha_mean",
-            "raw_vs_raw_random_cross_alpha_std",
-            r"cosine vs random baseline",
-        ),
-        (
-            "centered_vs_centered_random_cross_alpha_mean",
-            "centered_vs_centered_random_cross_alpha_std",
-            r"centered cosine vs centered random baseline",
-        ),
-        (
-            "centered_vs_raw_random_cross_alpha_mean",
-            "centered_vs_raw_random_cross_alpha_std",
-            r"centered cosine vs random baseline",
-        ),
-    ]
-
+    # n_cross / d^2 over d
     fig, ax = plt.subplots(figsize=(14, 10))
 
-    plotted = False
-    for mean_key, std_key, label in alpha_curves:
-        plotted |= plot_curve(
-            rows=mask_rows,
-            x_key="d",
-            y_mean_key=mean_key,
-            y_std_key=std_key,
-            label=label,
-            ax=ax,
-        )
+    plotted = plot_curve(
+        rows=mask_rows,
+        x_key="d",
+        y_mean_key=f"{prefix}_cross_alpha_mean",
+        y_std_key=f"{prefix}_cross_alpha_std",
+        label=baseline_label,
+        ax=ax,
+    )
 
     if plotted:
         ax.set_xlabel(r"$d$")
         ax.set_ylabel(r"min $\alpha = n_{\mathrm{train}}/d^2$")
         ax.set_title(
-            f"Minimum sample size to beat the random baseline\n"
+            f"Minimum quadratically normalized sample size to beat the {baseline_label}\n"
             f"{mask_label}, with " + r"$\alpha = n_{\mathrm{train}}/d^2$"
         )
         ax.legend(frameon=True)
         fig.tight_layout()
-        fig.savefig(output_dir / f"min_alpha_vs_d__{mask_label}.png", bbox_inches="tight")
+        fig.savefig(
+            output_dir / f"min_alpha_vs_d__{filename_tag}__{mask_label}.png",
+            bbox_inches="tight",
+        )
     plt.close(fig)
 
-    linear_curves = [
-        (
-            "raw_vs_raw_random_cross_alpha_linear_mean",
-            "raw_vs_raw_random_cross_alpha_linear_std",
-            r"cosine vs random baseline",
-        ),
-        (
-            "centered_vs_centered_random_cross_alpha_linear_mean",
-            "centered_vs_centered_random_cross_alpha_linear_std",
-            r"centered cosine vs centered random baseline",
-        ),
-        (
-            "centered_vs_raw_random_cross_alpha_linear_mean",
-            "centered_vs_raw_random_cross_alpha_linear_std",
-            r"centered cosine vs random baseline",
-        ),
-    ]
-
+    # n_cross / d over d
     fig, ax = plt.subplots(figsize=(14, 10))
 
-    plotted = False
-    for mean_key, std_key, label in linear_curves:
-        plotted |= plot_curve(
-            rows=mask_rows,
-            x_key="d",
-            y_mean_key=mean_key,
-            y_std_key=std_key,
-            label=label,
-            ax=ax,
-        )
+    plotted = plot_curve(
+        rows=mask_rows,
+        x_key="d",
+        y_mean_key=f"{prefix}_cross_alpha_linear_mean",
+        y_std_key=f"{prefix}_cross_alpha_linear_std",
+        label=baseline_label,
+        ax=ax,
+    )
 
     if plotted:
         ax.set_xlabel(r"$d$")
         ax.set_ylabel(r"min $\alpha_{\mathrm{lin}} = n_{\mathrm{train}}/d$")
         ax.set_title(
-            f"Minimum linearly normalized sample size to beat the random baseline\n"
+            f"Minimum linearly normalized sample size to beat the {baseline_label}\n"
             f"{mask_label}, with " + r"$\alpha_{\mathrm{lin}} = n_{\mathrm{train}}/d$"
         )
         ax.legend(frameon=True)
         fig.tight_layout()
-        fig.savefig(output_dir / f"min_alpha_linear_vs_d__{mask_label}.png", bbox_inches="tight")
+        fig.savefig(
+            output_dir / f"min_alpha_linear_vs_d__{filename_tag}__{mask_label}.png",
+            bbox_inches="tight",
+        )
     plt.close(fig)
 
-
-def plot_all_masks_raw_crossing(rows: list[dict], output_dir: Path) -> None:
+def plot_all_masks_crossing(
+    rows: list[dict],
+    output_dir: Path,
+    prefix: str,
+    baseline_label: str,
+    filename_tag: str,
+) -> None:
     masks = sorted({str(row["mask_label"]) for row in rows if row.get("mask_label") is not None})
 
+    # n_cross over d
     fig, ax = plt.subplots(figsize=(14, 10))
 
     plotted = False
@@ -749,8 +726,8 @@ def plot_all_masks_raw_crossing(rows: list[dict], output_dir: Path) -> None:
         plotted |= plot_curve(
             rows=mask_rows,
             x_key="d",
-            y_mean_key="raw_vs_raw_random_cross_ntrain_mean",
-            y_std_key="raw_vs_raw_random_cross_ntrain_std",
+            y_mean_key=f"{prefix}_cross_ntrain_mean",
+            y_std_key=f"{prefix}_cross_ntrain_std",
             label=mask,
             ax=ax,
         )
@@ -759,14 +736,18 @@ def plot_all_masks_raw_crossing(rows: list[dict], output_dir: Path) -> None:
         ax.set_xlabel(r"$d$")
         ax.set_ylabel(r"min $n_{\mathrm{train}}$")
         ax.set_title(
-            "Minimum sample size to beat the random baseline\n"
+            f"Minimum sample size to beat the {baseline_label}\n"
             "comparison across masking strategies"
         )
         ax.legend(frameon=True)
         fig.tight_layout()
-        fig.savefig(output_dir / "min_ntrain_vs_d__all_masks.png", bbox_inches="tight")
+        fig.savefig(
+            output_dir / f"min_ntrain_vs_d__all_masks__{filename_tag}.png",
+            bbox_inches="tight",
+        )
     plt.close(fig)
 
+    # n_cross / d^2 over d
     fig, ax = plt.subplots(figsize=(14, 10))
 
     plotted = False
@@ -775,8 +756,8 @@ def plot_all_masks_raw_crossing(rows: list[dict], output_dir: Path) -> None:
         plotted |= plot_curve(
             rows=mask_rows,
             x_key="d",
-            y_mean_key="raw_vs_raw_random_cross_alpha_mean",
-            y_std_key="raw_vs_raw_random_cross_alpha_std",
+            y_mean_key=f"{prefix}_cross_alpha_mean",
+            y_std_key=f"{prefix}_cross_alpha_std",
             label=mask,
             ax=ax,
         )
@@ -785,14 +766,18 @@ def plot_all_masks_raw_crossing(rows: list[dict], output_dir: Path) -> None:
         ax.set_xlabel(r"$d$")
         ax.set_ylabel(r"min $\alpha = n_{\mathrm{train}}/d^2$")
         ax.set_title(
-            "Minimum sample size to beat the random baseline\n"
+            f"Minimum quadratically normalized sample size to beat the {baseline_label}\n"
             r"comparison across masking strategies, $\alpha = n_{\mathrm{train}}/d^2$"
         )
         ax.legend(frameon=True)
         fig.tight_layout()
-        fig.savefig(output_dir / "min_alpha_vs_d__all_masks.png", bbox_inches="tight")
+        fig.savefig(
+            output_dir / f"min_alpha_vs_d__all_masks__{filename_tag}.png",
+            bbox_inches="tight",
+        )
     plt.close(fig)
 
+    # n_cross / d over d
     fig, ax = plt.subplots(figsize=(14, 10))
 
     plotted = False
@@ -801,8 +786,8 @@ def plot_all_masks_raw_crossing(rows: list[dict], output_dir: Path) -> None:
         plotted |= plot_curve(
             rows=mask_rows,
             x_key="d",
-            y_mean_key="raw_vs_raw_random_cross_alpha_linear_mean",
-            y_std_key="raw_vs_raw_random_cross_alpha_linear_std",
+            y_mean_key=f"{prefix}_cross_alpha_linear_mean",
+            y_std_key=f"{prefix}_cross_alpha_linear_std",
             label=mask,
             ax=ax,
         )
@@ -811,16 +796,24 @@ def plot_all_masks_raw_crossing(rows: list[dict], output_dir: Path) -> None:
         ax.set_xlabel(r"$d$")
         ax.set_ylabel(r"min $\alpha_{\mathrm{lin}} = n_{\mathrm{train}}/d$")
         ax.set_title(
-            "Minimum linearly normalized sample size to beat the random baseline\n"
+            f"Minimum linearly normalized sample size to beat the {baseline_label}\n"
             r"comparison across masking strategies, $\alpha_{\mathrm{lin}} = n_{\mathrm{train}}/d$"
         )
         ax.legend(frameon=True)
         fig.tight_layout()
-        fig.savefig(output_dir / "min_alpha_linear_vs_d__all_masks.png", bbox_inches="tight")
+        fig.savefig(
+            output_dir / f"min_alpha_linear_vs_d__all_masks__{filename_tag}.png",
+            bbox_inches="tight",
+        )
     plt.close(fig)
 
-
-def plot_all_masks_loglog_ntrain(rows: list[dict], output_dir: Path) -> None:
+def plot_all_masks_loglog_ntrain(
+    rows: list[dict],
+    output_dir: Path,
+    prefix: str,
+    baseline_label: str,
+    filename_tag: str,
+) -> None:
     masks = sorted({str(row["mask_label"]) for row in rows if row.get("mask_label") is not None})
 
     fig, ax = plt.subplots(figsize=(14, 10))
@@ -831,8 +824,8 @@ def plot_all_masks_loglog_ntrain(rows: list[dict], output_dir: Path) -> None:
         plotted |= plot_curve(
             rows=mask_rows,
             x_key="d",
-            y_mean_key="raw_vs_raw_random_cross_ntrain_mean",
-            y_std_key="raw_vs_raw_random_cross_ntrain_std",
+            y_mean_key=f"{prefix}_cross_ntrain_mean",
+            y_std_key=f"{prefix}_cross_ntrain_std",
             label=mask,
             ax=ax,
         )
@@ -843,12 +836,15 @@ def plot_all_masks_loglog_ntrain(rows: list[dict], output_dir: Path) -> None:
         ax.set_xlabel(r"$d$")
         ax.set_ylabel(r"min $n_{\mathrm{train}}$")
         ax.set_title(
-            "Minimum sample size to beat the random baseline\n"
+            f"Minimum sample size to beat the {baseline_label}\n"
             "comparison across masking strategies, log-log scale"
         )
         ax.legend(frameon=True)
         fig.tight_layout()
-        fig.savefig(output_dir / "min_ntrain_vs_d__all_masks_loglog.png", bbox_inches="tight")
+        fig.savefig(
+            output_dir / f"min_ntrain_vs_d__all_masks_loglog__{filename_tag}.png",
+            bbox_inches="tight",
+        )
 
     plt.close(fig)
 
@@ -861,8 +857,9 @@ def write_group_report(aggregated_rows: list[dict], output_path: Path) -> None:
         f.write("===================================\n\n")
         f.write(
             "Rows are grouped by config_signature, mask_label, and d.\n"
-            "Each reported value is the minimum n_train or alpha at which the learned matrix "
-            "has higher cosine similarity with the teacher than the random baseline.\n"
+            "For each group, we report crossing thresholds for two baselines:\n"
+            "1. the prior/random PSD baseline, computed from an independent random PSD matrix;\n"
+            "2. the CLT baseline 1/sqrt(d).\n"
             "The config_signature excludes d, r, r_star, pca_n_components, alpha, "
             "logging fields, device, and evaluation-only fields.\n\n"
         )
@@ -957,22 +954,48 @@ def main() -> None:
             if row.get("mask_label") is not None
         })
 
-        for mask_label in mask_labels:
-            plot_crossings_for_mask(
+        baseline_specs = [
+            {
+                "prefix": "random_psd",
+                "baseline_label": "random PSD baseline",
+                "filename_tag": "random_psd",
+            },
+            {
+                "prefix": "clt",
+                "baseline_label": r"$1/\sqrt{d}$ baseline",
+                "filename_tag": "clt",
+            },
+        ]
+
+        for spec in baseline_specs:
+            baseline_dir = signature_dir / f"{spec['filename_tag']}_crossings"
+            baseline_dir.mkdir(parents=True, exist_ok=True)
+
+            for mask_label in mask_labels:
+                plot_crossings_for_mask(
+                    rows=signature_rows,
+                    mask_label=mask_label,
+                    output_dir=baseline_dir,
+                    prefix=spec["prefix"],
+                    baseline_label=spec["baseline_label"],
+                    filename_tag=spec["filename_tag"],
+                )
+
+            plot_all_masks_crossing(
                 rows=signature_rows,
-                mask_label=mask_label,
-                output_dir=signature_dir,
+                output_dir=baseline_dir,
+                prefix=spec["prefix"],
+                baseline_label=spec["baseline_label"],
+                filename_tag=spec["filename_tag"],
             )
 
-        plot_all_masks_raw_crossing(
-            rows=signature_rows,
-            output_dir=signature_dir,
-        )
-
-        plot_all_masks_loglog_ntrain(
-            rows=signature_rows,
-            output_dir=signature_dir,
-        )
+            plot_all_masks_loglog_ntrain(
+                rows=signature_rows,
+                output_dir=baseline_dir,
+                prefix=spec["prefix"],
+                baseline_label=spec["baseline_label"],
+                filename_tag=spec["filename_tag"],
+            )
 
     print(f"[done] Wrote per-sweep baseline comparisons to: {crossing_path}")
     print(f"[done] Wrote aggregated baseline comparisons to: {aggregated_path}")

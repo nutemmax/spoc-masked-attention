@@ -1,15 +1,11 @@
 from __future__ import annotations
-
 import copy
 import itertools
 from pathlib import Path
 import yaml
 
-
-OUTPUT_DIR = Path("configs/teacher_attention/masking-schemes-dimension_d/d200")
+OUTPUT_DIR = Path("configs/teacher_attention/low-rank_kappa0p8_lambda0p05/d25-75")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-
-
 BASE_CONFIG = {
     "experiment": {
         "save_root": "results/teacher-attention/individual",
@@ -42,7 +38,7 @@ BASE_CONFIG = {
         "n_train": None,
         "n_steps": 5000,
         "learning_rate": 0.001,
-        "lambda_reg": 1.0e-5,
+        "lambda_reg": 5e-2,
     },
     "evaluation": {
         "n_population": 5000,
@@ -53,24 +49,20 @@ BASE_CONFIG = {
         "n_random_baselines": 10,
     },
     "logging": {
-        "use_wandb": True,
+        "use_wandb": False,
         "project": "spoc-masked-attention",
     },
 }
-
-
 def format_float(x: float | int | None) -> str:
     if x is None:
         return "NA"
     s = f"{float(x):.6g}"
     return s.replace(".", "p").replace("+", "")
 
-
 def format_r_star(r_star: int | str | None) -> str:
     if r_star is None:
         return "d"
     return str(r_star)
-
 
 def active_sigma_values(teacher_init: str, sigma_stars: list[float]) -> list[float]:
     if teacher_init == "standard_gaussian":
@@ -82,7 +74,6 @@ def active_sigma_values(teacher_init: str, sigma_stars: list[float]) -> list[flo
 
 def format_masking_name(masking_strategy: str, masks_per_sample: int = 1) -> str:
     masking_strategy = str(masking_strategy)
-
     if masking_strategy == "random":
         if int(masks_per_sample) == 1:
             return "maskrandom"
@@ -90,17 +81,32 @@ def format_masking_name(masking_strategy: str, masks_per_sample: int = 1) -> str
 
     if masking_strategy == "k_random":
         return f"maskrandom_k{int(masks_per_sample)}"
-
     if masking_strategy == "all":
         return "maskall"
-
     if masking_strategy == "multi_random":
         return f"maskmulti_k{int(masks_per_sample)}"
-
     if masking_strategy == "last":
         return "masklast"
-
     raise ValueError(f"Unknown masking_strategy: {masking_strategy}")
+
+
+def rank_from_kappa(d: int, kappa: float, name: str) -> int:
+    """
+    Compute rank from kappa = rank / d.
+    For clean experiments, kappa * d should be an integer.
+    """
+    rank_float = kappa * d
+    rank = int(round(rank_float))
+    if abs(rank - rank_float) > 1e-8:
+        raise ValueError(
+            f"{name} = {kappa} gives non-integer rank for d={d}: "
+            f"{rank_float}. Choose dimensions such that {name} * d is integer."
+        )
+    if rank <= 0:
+        raise ValueError(f"{name} = {kappa} gives non-positive rank {rank} for d={d}.")
+    if rank > d:
+        raise ValueError(f"{name} = {kappa} gives rank {rank} > d={d}.")
+    return rank
 
 
 def build_config_name(
@@ -125,7 +131,6 @@ def build_config_name(
         f"rstar_{format_r_star(r_star)}",
         f"sigstar_{format_float(sigma_star)}",
     ]
-
     parts.extend([
         f"bstar_{format_float(beta_star)}",
         f"beta_{format_float(beta)}",
@@ -145,12 +150,17 @@ def build_config_name(
 def keep_chessboard(index_tuple: tuple[int, ...]) -> bool:
     return sum(index_tuple) % 2 == 0
 
-
 def main() -> None:
     use_chessboard = False
+    tie_r_to_d = False
 
-    # if true, automatically set r = d, r_star = d, and pca_n_components = d, else use the explicit r_values, r_star_values, and pca_n_components_list below
-    tie_r_to_d = True
+    # used only when tie_r_to_d = False.
+    kappa_values = [0.8]
+    kappa_star_values = [0.8]
+
+    # used only when tie_r_to_d = False.
+    # for matched low-rank r = r_star, "student_rank" and "teacher_rank" are equivalent.
+    pca_rank_source = "student_rank" # options: "student_rank", "teacher_rank", "d", "none"
 
     teacher_inits = [
         "scaled_gaussian",
@@ -165,19 +175,14 @@ def main() -> None:
         ("last", 1),
     ]
 
-    ds = [200]
+    ds = [25, 50, 75]
     Ts = [5]
-
-    r_values = [50]
-    r_star_values = [50]
 
     beta_stars = [1.0]
     betas = [1.0]
-    lambda_regs = [1e-5]
+    lambda_regs = [5e-2]
     learning_rates = [1e-3]
     n_steps_list = [5000]
-
-    pca_n_components_list: list[int | None] = [50]
 
     count = 0
 
@@ -198,9 +203,8 @@ def main() -> None:
 
         if not tie_r_to_d:
             dimensions.extend([
-                r_values,
-                r_star_values,
-                pca_n_components_list,
+                kappa_values,
+                kappa_star_values,
             ])
 
         for index_tuple in itertools.product(*[range(len(dim)) for dim in dimensions]):
@@ -230,9 +234,8 @@ def main() -> None:
                     i_lam,
                     i_lr,
                     i_steps,
-                    i_r,
-                    i_rstar,
-                    i_pca,
+                    i_kappa,
+                    i_kappa_star,
                 ) = index_tuple
 
             masking_strategy, masks_per_sample = masking_configs[i_masking]
@@ -250,9 +253,20 @@ def main() -> None:
                 r_star = d
                 pca_n_components = d
             else:
-                r = r_values[i_r]
-                r_star = r_star_values[i_rstar]
-                pca_n_components = pca_n_components_list[i_pca]
+                kappa = kappa_values[i_kappa]
+                kappa_star = kappa_star_values[i_kappa_star]
+                r = rank_from_kappa(d=d, kappa=kappa, name="kappa")
+                r_star = rank_from_kappa(d=d, kappa=kappa_star, name="kappa_star")
+                if pca_rank_source == "student_rank":
+                    pca_n_components = r
+                elif pca_rank_source == "teacher_rank":
+                    pca_n_components = r_star
+                elif pca_rank_source == "d":
+                    pca_n_components = d
+                elif pca_rank_source == "none":
+                    pca_n_components = None
+                else:
+                    raise ValueError(f"Unknown pca_rank_source: {pca_rank_source}")
 
             if r <= 0:
                 print(f"[skip] r={r} must be positive")
@@ -276,12 +290,10 @@ def main() -> None:
             config["data"]["T"] = T
             config["data"]["masking_strategy"] = masking_strategy
             config["data"]["masks_per_sample"] = int(masks_per_sample)
-
             config["teacher"]["init"] = teacher_init
             config["teacher"]["r_star"] = r_star
             config["teacher"]["beta_star"] = beta_star
             config["teacher"]["sigma_star"] = sigma_star
-
             config["model"]["r"] = r
             config["model"]["beta"] = beta
 
@@ -311,9 +323,7 @@ def main() -> None:
             output_path = OUTPUT_DIR / f"{config_name}.yaml"
             with open(output_path, "w", encoding="utf-8") as f:
                 yaml.safe_dump(config, f, sort_keys=False)
-
             count += 1
-
     print(f"Generated {count} configs in {OUTPUT_DIR}")
 
 

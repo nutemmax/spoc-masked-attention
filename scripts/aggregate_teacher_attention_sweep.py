@@ -214,86 +214,6 @@ def save_sweep_metadata(sweep_dir: Path, metadata: dict) -> None:
         json.dump(metadata, f, indent=2)
 
 
-def write_summary_csv(rows: list[dict], path: Path) -> None:
-    if not rows:
-        return
-
-    preferred = [
-        "alpha",
-        "master_seed",
-        "run_seed",
-        "seed",
-        "teacher_seed",
-        "train_data_seed",
-        "population_data_seed",
-        "student_init_seed",
-        "n_train",
-        "n_population",
-        "teacher_init",
-        "r_star",
-        "beta_star",
-        "sigma_star",
-        "train_loss",
-        "population_risk",
-        "generalization_gap",
-        "ridge_train_loss",
-        "ridge_population_risk",
-        "ridge_generalization_gap",
-        "attention_vs_ridge_gap",
-        "attention_vs_ridge_relative_improvement",
-        "pca_train_loss",
-        "pca_population_risk",
-        "pca_generalization_gap",
-        "attention_vs_pca_gap",
-        "attention_vs_pca_relative_improvement",
-        "pca_n_components",
-        "cosine_S_S_star",
-        "centered_cosine_S_S_star",
-        "random_baseline_cosine_S_S_star",
-        "random_baseline_centered_cosine_S_S_star",
-        "relative_error_S_S_star",
-        "final_attention_level_error",
-        "runtime_seconds",
-        "runtime_per_step_seconds",
-        "initial_objective",
-        "final_objective",
-        "best_objective",
-        "objective_reduction",
-        "initial_train_loss_history",
-        "final_train_loss_history",
-        "best_train_loss_history",
-        "train_loss_reduction",
-        "weight_norm",
-        "W_star_norm",
-        "S_trace",
-        "S_top_eigenvalue",
-        "S_min_eigenvalue",
-        "S_R1",
-        "S_effective_rank",
-        "S_frobenius_norm",
-        "S_star_trace",
-        "S_star_top_eigenvalue",
-        "S_star_min_eigenvalue",
-        "S_star_R1",
-        "S_star_effective_rank",
-        "S_star_frobenius_norm",
-        "datetime",
-        "run_name",
-    ]
-
-    all_keys = set()
-    for row in rows:
-        all_keys.update(row.keys())
-
-    fieldnames = [key for key in preferred if key in all_keys]
-    fieldnames += sorted(key for key in all_keys if key not in fieldnames)
-
-    with open(path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
-        writer.writeheader()
-        writer.writerows(rows)
-
-
 def has_run_subdirs(path: Path) -> bool:
     if not path.is_dir():
         return False
@@ -464,6 +384,90 @@ def plot_metrics_vs_sweep(
     return True
 
 
+
+def plot_cosine_vs_sweep(
+    rows: list[dict],
+    sweep_key: str,
+    title: str,
+    output_path: Path,
+    d_value: float,
+    include_random_baseline: bool,
+    zoom: tuple[float | None, float | None] | None = None,
+) -> bool:
+    fig, ax = plt.subplots(figsize=(11, 7.5))
+
+    xs, means, _ = grouped_mean_std(rows, sweep_key, "cosine_S_S_star")
+    if xs.size == 0:
+        plt.close(fig)
+        return False
+
+    ax.plot(
+        xs,
+        means,
+        marker="o",
+        linewidth=2.2,
+        markersize=7,
+        label=r"Learned $\cos(S,S^\star)$",
+    )
+
+    if include_random_baseline:
+        xs_rand, rand_means, _ = grouped_mean_std(
+            rows,
+            sweep_key,
+            "random_baseline_cosine_S_S_star_mean",
+        )
+
+        if xs_rand.size == 0:
+            xs_rand, rand_means, _ = grouped_mean_std(
+                rows,
+                sweep_key,
+                "random_baseline_cosine_S_S_star",
+            )
+
+        if xs_rand.size > 0:
+            ax.plot(
+                xs_rand,
+                rand_means,
+                marker="o",
+                linewidth=2.2,
+                markersize=7,
+                linestyle="--",
+                color="orange",
+                label=r"Random baseline $\cos(S_{\mathrm{rand}},S^\star)$",
+            )
+
+    clt_value = 1.0 / math.sqrt(float(d_value))
+    ax.axhline(
+        clt_value,
+        color="red",
+        linestyle="--",
+        linewidth=1.8,
+        label=rf"$1/\sqrt{{d}}={clt_value:.3f}$",
+    )
+
+    ax.axhline(
+        0.0,
+        color="black",
+        linestyle=":",
+        linewidth=1.0,
+    )
+
+    set_sweep_xlabel(ax, sweep_key)
+    ax.set_ylabel(r"$\cos(S,S^\star)$")
+    ax.set_title(title, pad=16)
+    ax.legend(frameon=True)
+
+    if zoom is not None:
+        xmin, xmax = zoom
+        if xmin is not None or xmax is not None:
+            ax.set_xlim(left=xmin, right=xmax)
+
+    fig.tight_layout()
+    fig.savefig(output_path, bbox_inches="tight")
+    plt.close(fig)
+    return True
+
+
 def zoom_suffix(zoom: tuple[float | None, float | None] | None) -> str:
     if zoom is None:
         return "full"
@@ -564,6 +568,7 @@ def generate_teacher_attention_summary_plots(
     if recovery_zoom_ranges is None:
         recovery_zoom_ranges = [(None, None)]
 
+    # loss metrics: attentions vs ridge vs pca
     loss_metrics = [
         ("train_loss", "Train loss"),
         ("population_risk", "Population risk"),
@@ -606,30 +611,9 @@ def generate_teacher_attention_summary_plots(
             zoom=zoom,
         )
 
-    loss_no_pca = [
-        ("train_loss", "Train loss"),
-        ("population_risk", "Population risk"),
-        ("ridge_population_risk", "Ridge"),
-    ]
-
-    for zoom in loss_zoom_ranges:
-        name = f"train_vs_population_vs_ridge_{sweep_key}_{zoom_suffix(zoom)}.png"
-        plot_metrics_vs_sweep(
-            rows=rows,
-            sweep_key=sweep_key,
-            metrics=loss_no_pca,
-            ylabel="Risk",
-            title=build_teacher_attention_sweep_title(
-                "Train loss vs population risk vs ridge",
-                base_config,
-            ),
-            output_path=plots_dir / name,
-            zoom=zoom,
-        )
-
+    # teacher recovery metrics: cosine similarity, relative error, attention-level error
     recovery_metrics = [
         ("cosine_S_S_star", r"Raw cosine"),
-        ("centered_cosine_S_S_star", r"Centered cosine"),
         ("relative_error_S_S_star", r"Relative Frobenius error"),
         ("final_attention_level_error", "Attention-level error"),
     ]
@@ -649,70 +633,51 @@ def generate_teacher_attention_summary_plots(
             zoom=zoom,
         )
 
-    cosine_only_metrics = [
-        ("cosine_S_S_star", r"$\cos(S,S^\star)$"),
-    ]
+    # 1) learned cosine + 1/sqrt(d)
+    # 2) learned cosine + random PSD baseline + 1/sqrt(d)
+    d_value = None
+    if base_config is not None:
+        data_cfg = base_config.get("data", {})
+        if isinstance(data_cfg, dict):
+            d_value = data_cfg.get("d")
 
-    for zoom in recovery_zoom_ranges:
-        name = f"cosine_similarity_{sweep_key}_{zoom_suffix(zoom)}.png"
-        plot_metrics_vs_sweep(
-            rows=rows,
-            sweep_key=sweep_key,
-            metrics=cosine_only_metrics,
-            ylabel=r"$\cos(S,S^\star)$",
-            title=build_teacher_attention_sweep_title(
-                "Cosine similarity",
-                base_config,
-            ),
-            output_path=plots_dir / name,
-            zoom=zoom,
-        )
+    if d_value is None and len(rows) > 0:
+        d_value = rows[0].get("d")
 
-    cosine_with_baselines_metrics = [
-        (
-            "cosine_S_S_star",
-            r"Learned $\cos(S,S^\star)$",
-        ),
-        (
-            "random_baseline_cosine_S_S_star_mean",
-            r"Random baseline $\cos(S_{\mathrm{rand}},S^\star)$",
-            "random_baseline_cosine_S_S_star_std",
-            "random_baseline_cosine_S_S_star",
-        ),
-        (
-            "centered_cosine_S_S_star",
-            r"Learned centered cosine",
-        ),
-        (
-            "random_baseline_centered_cosine_S_S_star_mean",
-            r"Random baseline centered cosine",
-            "random_baseline_centered_cosine_S_S_star_std",
-            "random_baseline_centered_cosine_S_S_star",
-        ),
-    ]
+    if d_value is not None:
+        for zoom in recovery_zoom_ranges:
+            name = f"cosine_similarity_with_clt_{sweep_key}_{zoom_suffix(zoom)}.png"
+            plot_cosine_vs_sweep(
+                rows=rows,
+                sweep_key=sweep_key,
+                title=build_teacher_attention_sweep_title(
+                    "Cosine similarity with $1/\\sqrt{d}$ baseline",
+                    base_config,
+                ),
+                output_path=plots_dir / name,
+                d_value=float(d_value),
+                include_random_baseline=False,
+                zoom=zoom,
+            )
 
-    for zoom in recovery_zoom_ranges:
-        name = f"cosine_similarity_with_baselines_{sweep_key}_{zoom_suffix(zoom)}.png"
-        plot_metrics_vs_sweep(
-            rows=rows,
-            sweep_key=sweep_key,
-            metrics=cosine_with_baselines_metrics,
-            ylabel="Cosine similarity",
-            title=build_teacher_attention_sweep_title(
-                "Cosine similarity with baselines",
-                base_config,
-            ),
-            output_path=plots_dir / name,
-            zoom=zoom,
-        )
+        for zoom in recovery_zoom_ranges:
+            name = f"cosine_similarity_with_baselines_{sweep_key}_{zoom_suffix(zoom)}.png"
+            plot_cosine_vs_sweep(
+                rows=rows,
+                sweep_key=sweep_key,
+                title=build_teacher_attention_sweep_title(
+                    "Cosine similarity with baselines",
+                    base_config,
+                ),
+                output_path=plots_dir / name,
+                d_value=float(d_value),
+                include_random_baseline=True,
+                zoom=zoom,
+            )
+    else:
+        print(f"[warn] Could not infer d for cosine baseline plots in {sweep_dir}")
 
     separate_recovery_plots = [
-        (
-            "centered_cosine_S_S_star",
-            "Centered cosine similarity",
-            "Centered cosine similarity",
-            f"centered_cosine_similarity_{sweep_key}.png",
-        ),
         (
             "relative_error_S_S_star",
             r"$\|S-S^\star\|_F/\|S^\star\|_F$",
@@ -743,41 +708,7 @@ def generate_teacher_attention_summary_plots(
                 zoom=zoom,
             )
 
-    gap_metrics = [
-        ("generalization_gap", "Generalization gap"),
-        ("attention_vs_ridge_gap", "Attention - Ridge"),
-        ("attention_vs_pca_gap", "Attention - PCA"),
-    ]
-
-    plot_metrics_vs_sweep(
-        rows=rows,
-        sweep_key=sweep_key,
-        metrics=gap_metrics,
-        ylabel="Gap",
-        title=build_teacher_attention_sweep_title(
-            "Generalization and baseline gaps",
-            base_config,
-        ),
-        output_path=plots_dir / f"gap_metrics_{sweep_key}.png",
-    )
-
-    relative_improvement_metrics = [
-        ("attention_vs_ridge_relative_improvement", "vs Ridge"),
-        ("attention_vs_pca_relative_improvement", "vs PCA"),
-    ]
-
-    plot_metrics_vs_sweep(
-        rows=rows,
-        sweep_key=sweep_key,
-        metrics=relative_improvement_metrics,
-        ylabel="Relative improvement",
-        title=build_teacher_attention_sweep_title(
-            "Relative improvement of attention over baselines",
-            base_config,
-        ),
-        output_path=plots_dir / f"relative_improvement_{sweep_key}.png",
-    )
-
+    # spectral metrics: trace, top eigenvalue, spectral concentration R1, effective rank
     trace_metrics = [
         ("S_trace", r"$\mathrm{Tr}(S)$"),
         ("S_star_trace", r"$\mathrm{Tr}(S^\star)$"),
@@ -861,6 +792,84 @@ def generate_teacher_attention_summary_plots(
         ),
         output_path=plots_dir / f"runtime_{sweep_key}.png",
     )
+
+def write_summary_csv(rows: list[dict], path: Path) -> None:
+    if not rows:
+        return
+
+    preferred = [
+        "alpha",
+        "master_seed",
+        "run_seed",
+        "seed",
+        "teacher_seed",
+        "train_data_seed",
+        "population_data_seed",
+        "student_init_seed",
+        "n_train",
+        "n_population",
+        "teacher_init",
+        "r_star",
+        "beta_star",
+        "sigma_star",
+        "train_loss",
+        "population_risk",
+        "generalization_gap",
+        "ridge_train_loss",
+        "ridge_population_risk",
+        "ridge_generalization_gap",
+        "attention_vs_ridge_gap",
+        "attention_vs_ridge_relative_improvement",
+        "pca_train_loss",
+        "pca_population_risk",
+        "pca_generalization_gap",
+        "attention_vs_pca_gap",
+        "attention_vs_pca_relative_improvement",
+        "pca_n_components",
+        "cosine_S_S_star",
+        "random_baseline_cosine_S_S_star",
+        "sqrt(d)_baseline_cosine_S_S_star",
+        "relative_error_S_S_star",
+        "final_attention_level_error",
+        "runtime_seconds",
+        "runtime_per_step_seconds",
+        "initial_objective",
+        "final_objective",
+        "best_objective",
+        "objective_reduction",
+        "initial_train_loss_history",
+        "final_train_loss_history",
+        "best_train_loss_history",
+        "train_loss_reduction",
+        "weight_norm",
+        "W_star_norm",
+        "S_trace",
+        "S_top_eigenvalue",
+        "S_min_eigenvalue",
+        "S_R1",
+        "S_effective_rank",
+        "S_frobenius_norm",
+        "S_star_trace",
+        "S_star_top_eigenvalue",
+        "S_star_min_eigenvalue",
+        "S_star_R1",
+        "S_star_effective_rank",
+        "S_star_frobenius_norm",
+        "datetime",
+        "run_name",
+    ]
+
+    all_keys = set()
+    for row in rows:
+        all_keys.update(row.keys())
+
+    fieldnames = [key for key in preferred if key in all_keys]
+    fieldnames += sorted(key for key in all_keys if key not in fieldnames)
+
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
 
 
 def aggregate_one_sweep(sweep_dir: Path, force: bool = False) -> None:

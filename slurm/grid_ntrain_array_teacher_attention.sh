@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --mail-user=emma.anastassova@epfl.ch
-#SBATCH --output=logs/grids/teacher_grids_%A_%a.out
-#SBATCH --error=logs/grids/teacher_grids_%A_%a.err
+#SBATCH --output=logs/grids/kappa0p8/teacher_grids_%A_%a.out
+#SBATCH --error=logs/grids/kappa0p8/teacher_grids_%A_%a.err
 #SBATCH --mail-type=FAIL
 #SBATCH --partition=academic
 
@@ -12,7 +12,7 @@ cd "$PROJECT_DIR"
 
 mkdir -p logs/grids
 
-CONFIG_DIR="/home/anastass/spoc-masked-attention/configs/teacher_attention/masking-schemes-dimension_d/d200/"
+CONFIG_DIR="/home/anastass/spoc-masked-attention/configs/teacher_attention/low-rank_kappa0p8_lambda0p05/d25-75/"
 
 if [ ! -d "$CONFIG_DIR" ]; then
   echo "Config directory does not exist: $CONFIG_DIR"

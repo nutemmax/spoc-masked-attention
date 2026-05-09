@@ -1,14 +1,14 @@
 #!/bin/bash
-#SBATCH --job-name=d200teacher_ntrain
-#SBATCH --output=logs/d200_quadratic_teacher/teacher_ntrain_%A_%a.out
-#SBATCH --error=logs/d200_quadratic_teacher/teacher_ntrain_%A_%a.err
+#SBATCH --job-name=d25-75-kappa0p8-teacher-ntrain
+#SBATCH --output=logs/kappa0p8/d25-75-teacher_ntrain_%A_%a.out
+#SBATCH --error=logs/kappa0p8/d25-75-teacher_ntrain_%A_%a.err
 #SBATCH --partition=academic
 #SBATCH --time=24:00:00
-#SBATCH --cpus-per-task=5
+#SBATCH --cpus-per-task=1
 #SBATCH --mail-user=emma.anastassova@epfl.ch
 #SBATCH --mail-type=FAIL
-#SBATCH --mem=20G
-#SBATCH --array=0-36%10 # %18 
+#SBATCH --mem=5G
+#SBATCH --array=0-41%21 # %18 
 
 set -euo pipefail
 
@@ -63,8 +63,8 @@ CONFIG_NAME=$(basename "$CONFIG_PATH" .yaml)
 SWEEP_TIMESTAMP=${SLURM_ARRAY_JOB_ID:-$SLURM_JOB_ID}
 SEED=42
 
-SWEEP_DIR_REL="results/teacher-attention/iter_${ITERS}/cosine-sim/${CONFIG_NAME}/${CONFIG_NAME}_seed_${SEED}_${SWEEP_TIMESTAMP}"
-NTRAIN_CSV="10,20,30,40,50,60,70,80,90,100,125,150,175,200,250,300,400,500,750,1000,1250,1500,1750,2000,2500,3000,3500,4000,5000,6000,7000,7500,8000,9000,10000,12500,15000" # adding 3000, 3500, 4000, 6000, 7000, 7500, 8000, 9000, 10000, 12500,15000
+SWEEP_DIR_REL="results/teacher-attention/iter_${ITERS}/kappa_star_0p8/${CONFIG_NAME}/${CONFIG_NAME}_seed_${SEED}_${SWEEP_TIMESTAMP}"
+NTRAIN_CSV="10,20,30,40,50,60,70,80,90,100,125,150,175,200,250,300,400,500,750,1000,1250,1500,1750,2000,2500,3000,3500,4000,5000,6000,7000,7500,8000,9000,10000,12500,15000,20000,25000,30000,40000,50000" # adding 20k,25k,30k,40k,50k
 
 # ====== SETUP ======
 PROJECT_DIR=/home/anastass/spoc-masked-attention

@@ -31,7 +31,8 @@ def reconstruction_loss(model, X_tilde: Tensor, X: Tensor, mask_indices: Tensor)
 
 
 def regularized_training_objective(model, X_tilde: Tensor, X: Tensor, mask_indices: Tensor, lambda_reg: float) -> Tensor:
-    """Reconstruction loss + L2 regularization."""
+    """Reconstruction loss + dimension-normalized L2 regularization."""
     recon = reconstruction_loss(model, X_tilde, X, mask_indices)
-    reg = lambda_reg * torch.sum(model.W ** 2)
+    d, r = model.W.shape
+    reg = lambda_reg * torch.sum(model.W ** 2) / (d*r)
     return recon + reg

@@ -218,6 +218,9 @@ def compute_random_baseline_metrics(
     raw_cosines_np = np.asarray(raw_cosines, dtype=float)
     centered_cosines_np = np.asarray(centered_cosines, dtype=float)
 
+    d = S_star_t.shape[0]
+    baseline_sqrt_d = np.sqrt(d)
+
     return {
         "random_baseline_cosine_S_S_star": float(np.mean(raw_cosines_np)),
         "random_baseline_centered_cosine_S_S_star": float(np.mean(centered_cosines_np)),
@@ -226,6 +229,7 @@ def compute_random_baseline_metrics(
         "random_baseline_centered_cosine_S_S_star_mean": float(np.mean(centered_cosines_np)),
         "random_baseline_centered_cosine_S_S_star_std": float(np.std(centered_cosines_np)),
         "n_random_baselines": int(n_random_baselines),
+        "baseline_sqrt_d": float(baseline_sqrt_d),
     }
 
 
@@ -353,8 +357,15 @@ def run_experiment(config: dict) -> dict:
             "For k_random or multi_random, masks_per_sample must satisfy 1 <= masks_per_sample <= T."
         )
 
-    if r != d:
-        raise ValueError("Current teacher-attention student setup expects r = d.")
+    # allow r != d, but require a valid positive rank.
+    if r <= 0:
+        raise ValueError(f"model.r must be positive, got r={r}.")
+
+    if r > d:
+        raise ValueError(
+            f"model.r={r} is larger than d={d}. "
+            "This is not supported for low-rank teacher/student experiments."
+        )
 
     if n_train_override is not None:
         n_train_override = int(n_train_override)
@@ -400,6 +411,17 @@ def run_experiment(config: dict) -> dict:
 
     teacher_cfg = config["teacher"]
     r_star = resolve_r_star(teacher_cfg.get("r_star"), d)
+
+    # allow r_star != d, but require valid teacher rank
+    if r_star <= 0:
+        raise ValueError(f"teacher.r_star must be positive, got r_star={r_star}.")
+
+    if r_star > d:
+        raise ValueError(
+            f"teacher.r_star={r_star} is larger than d={d}. "
+            "Please use r_star <= d."
+        )
+
     beta_star = float(teacher_cfg["beta_star"])
     teacher_init = str(teacher_cfg["init"])
     sigma_star = float(teacher_cfg["sigma_star"])
@@ -590,6 +612,13 @@ def run_experiment(config: dict) -> dict:
             pca_n_components = min(75, Td // 2)
         else:
             pca_n_components = int(pca_n_components_cfg)
+        
+        # no more than available samples
+        pca_n_components = min(
+            pca_n_components,
+            X_train_np.shape[0],
+            Td,
+        )
 
         pca_model = fit_pca(X_train_np, n_components=pca_n_components)
         pca_train_loss = evaluate_pca(
@@ -632,7 +661,10 @@ def run_experiment(config: dict) -> dict:
         )
 
         metrics["teacher_init"] = teacher_init
+        metrics["r"] = int(r)
         metrics["r_star"] = int(r_star)
+        metrics["kappa"] = float(r / d)
+        metrics["kappa_star"] = float(r_star / d)
         metrics["beta_star"] = float(beta_star)
         metrics["sigma_star"] = float(sigma_star)
 
@@ -675,6 +707,7 @@ def run_experiment(config: dict) -> dict:
         finish_wandb(wandb_module)
 
 
+
 def save_run_plots(results: dict, run_dir: Path) -> None:
     suffix = results["config_suffix"]
     config = results["config"]
@@ -686,6 +719,9 @@ def save_run_plots(results: dict, run_dir: Path) -> None:
     eigenvalues = results["eigenvalues"]
     eigenvalues_star = results["eigenvalues_star"]
     history = results["history"]
+    d = config["data"]["d"]
+    r = config["model"]["r"]
+    r_star = config["teacher"].get("r_star") if config["teacher"].get("r_star") is not None else d
 
     fig, _ = plots.plot_eigenvalues(
         eigenvalues,
@@ -804,8 +840,9 @@ def save_run_plots(results: dict, run_dir: Path) -> None:
     for name, fig in plots.plot_teacher_recovery_history(
         history,
         title_prefix=recovery_config_label,
+        d = d,
     ):
-        fig.savefig(run_dir / f"{name}__{suffix}.png", bbox_inches="tight")
+        fig.savefig(run_dir / f"{name}_d{d}_r_star{r_star}__{suffix}.png", bbox_inches="tight")
         plt.close(fig)
 
 

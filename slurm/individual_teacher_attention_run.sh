@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=teacher_attn
-#SBATCH --output=logs/teacher_attn_%j.out
-#SBATCH --error=logs/teacher_attn_%j.err
+#SBATCH --output=logs/indiv/teacher_attn_%j.out
+#SBATCH --error=logs/indiv/teacher_attn_%j.err
 #SBATCH --partition=academic
 #SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=1
@@ -26,7 +26,7 @@ export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 export MKL_NUM_THREADS=$SLURM_CPUS_PER_TASK
 export OPENBLAS_NUM_THREADS=$SLURM_CPUS_PER_TASK
 
-CONFIG_PATH="/home/anastass/spoc-masked-attention/configs/default-teacher-attention-maskrandom.yaml"
+CONFIG_PATH="/home/anastass/spoc-masked-attention/configs/default-teacher-attention-maskrandom_lambda_scaling.yaml"
 NTRAIN=1000
 SEED=42
 
