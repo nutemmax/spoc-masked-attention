@@ -1,0 +1,13 @@
+Baseline comparison grouping report
+===================================
+
+Rows are grouped by config_signature, mask_label, and d.
+Each reported value is the minimum n_train or alpha at which the learned matrix has higher cosine similarity with the teacher than the random baseline.
+The config_signature excludes d, r, r_star, pca_n_components, alpha, logging fields, device, and evaluation-only fields.
+
+config_signature:
+data_model=teacher_attention__T=5__mask_value=1.0__teacher_init=scaled_gaussian__sigma_star=1.0__beta_star=1.0__beta=1.0__normalize_sqrt_d=True__dtype=float64__lambda=0.05__lr=0.001__n_steps=5000
+masks: maskall, masklast, maskmulti_k2, maskrandom, maskrandom_k2
+d values: [25, 50, 75, 100, 125, 150, 175, 200]
+number of grouped rows: 40
+
