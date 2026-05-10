@@ -7,12 +7,24 @@ import math
 import re
 from pathlib import Path
 import hashlib
-
 import matplotlib
-
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+
+from crossing_utils import (
+    format_float_for_title,
+    format_mask_label,
+    get_float,
+    get_int,
+    grouped_mean_by_ntrain,
+    one_or_mixed,
+    parse_mask_from_name,
+    read_csv_rows,
+    read_json,
+    resolve_r_star,
+    sanitize_filename,
+)
 
 
 plt.rcParams.update({
@@ -28,21 +40,13 @@ plt.rcParams.update({
     "savefig.bbox": "tight",
 })
 
+MARKERS = ["o", "s", "^", "D", "v", "P", "X", "*"]
+CROSSING_KEYS = [
+    "cosine_S_S_star",
+    "random_baseline_cosine_S_S_star",
+    "random_baseline_cosine_S_S_star_mean",
+]
 
-def get_float(row: dict, key: str) -> float | None:
-    value = row.get(key)
-    if value is None or value == "":
-        return None
-
-    try:
-        out = float(value)
-    except (TypeError, ValueError):
-        return None
-
-    if math.isnan(out) or math.isinf(out):
-        return None
-
-    return out
 
 
 def group_teacher_signature(
@@ -64,98 +68,40 @@ def group_teacher_signature(
     return init, sigma
 
 
-def get_int(row: dict, key: str) -> int | None:
-    value = get_float(row, key)
-    if value is None:
-        return None
-    return int(round(value))
 
 
-def read_csv_rows(path: Path) -> list[dict]:
-    with open(path, "r", encoding="utf-8") as f:
-        return list(csv.DictReader(f))
+def unique_non_none(rows: list[dict], key: str) -> list[object]:
+    values = []
+    for row in rows:
+        value = row.get(key)
+        if value is not None and value not in values:
+            values.append(value)
+    return values
 
 
-def read_json(path: Path) -> dict | None:
-    if not path.exists():
-        return None
 
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return None
+def build_title_metadata(rows: list[dict]) -> str:
+    """
+    Build compact title metadata from one config-signature group.
+    Assumes these values are constant within the group, except d.
+    """
+    kappa = one_or_mixed(rows, "kappa")
+    kappa_star = one_or_mixed(rows, "kappa_star")
+    T = one_or_mixed(rows, "T")
+    lambda_reg = one_or_mixed(rows, "lambda_reg")
+    learning_rate = one_or_mixed(rows, "learning_rate")
+    n_steps = one_or_mixed(rows, "n_steps")
 
-
-def sanitize_filename(s: str, max_len: int = 80) -> str:
-    cleaned = (
-        str(s)
-        .replace("=", "-")
-        .replace(".", "p")
-        .replace("/", "-")
-        .replace(" ", "_")
-        .replace(":", "-")
-        .replace(",", "_")
-        .replace("__", "_")
+    return (
+        rf"$\kappa^\star = {format_float_for_title(kappa_star)}$, "
+        rf"$\kappa = {format_float_for_title(kappa)}$, "
+        rf"$T = {format_float_for_title(T)}$, "
+        rf"$\lambda = {format_float_for_title(lambda_reg)}$, "
+        rf"$\eta = {format_float_for_title(learning_rate)}$, "
+        rf"iters $= {format_float_for_title(n_steps)}$"
     )
 
-    digest = hashlib.sha1(str(s).encode("utf-8")).hexdigest()[:10]
 
-    if len(cleaned) <= max_len:
-        return f"{cleaned}__{digest}"
-
-    return f"{cleaned[:max_len]}__{digest}"
-
-
-def parse_mask_from_name(name: str) -> str | None:
-    known_masks = [
-        "maskrandom_k",
-        "maskmulti_k",
-        "maskrandom",
-        "maskall",
-        "masklast",
-    ]
-
-    for mask in known_masks:
-        if name.startswith(mask):
-            if mask in {"maskrandom_k", "maskmulti_k"}:
-                match = re.match(r"(mask(?:random|multi)_k\d+)", name)
-                if match is not None:
-                    return match.group(1)
-            return mask
-
-    return None
-
-
-def format_mask_label(masking_strategy: str | None, masks_per_sample: int | None) -> str | None:
-    if masking_strategy is None:
-        return None
-
-    masking_strategy = str(masking_strategy)
-
-    if masks_per_sample is None:
-        masks_per_sample_int = 1
-    else:
-        masks_per_sample_int = int(masks_per_sample)
-
-    if masking_strategy == "random":
-        if masks_per_sample_int == 1:
-            return "maskrandom"
-        return f"maskrandom_k{masks_per_sample_int}"
-
-    if masking_strategy == "k_random":
-        return f"maskrandom_k{masks_per_sample_int}"
-
-    if masking_strategy == "multi_random":
-        return f"maskmulti_k{masks_per_sample_int}"
-
-    if masking_strategy == "all":
-        return "maskall"
-
-    if masking_strategy == "last":
-        return "masklast"
-
-    return masking_strategy
 
 
 def build_config_signature(base_config: dict | None) -> str:
@@ -246,6 +192,14 @@ def extract_metadata(summary_path: Path, rows: list[dict]) -> dict:
 
     base_config = None
     d = None
+    T = None
+    r = None
+    r_star = None
+    kappa = None
+    kappa_star = None
+    lambda_reg = None
+    learning_rate = None
+    n_steps = None
     masking_strategy = None
     masks_per_sample = None
 
@@ -260,18 +214,69 @@ def extract_metadata(summary_path: Path, rows: list[dict]) -> dict:
 
     if base_config is not None:
         data_cfg = base_config.get("data", {})
+        model_cfg = base_config.get("model", {})
+        teacher_cfg = base_config.get("teacher", {})
+        training_cfg = base_config.get("training", {})
+
         d = data_cfg.get("d", None)
+        T = data_cfg.get("T", None)
         masking_strategy = data_cfg.get("masking_strategy", None)
         masks_per_sample = data_cfg.get("masks_per_sample", None)
 
+        r = model_cfg.get("r", None)
+        raw_r_star = teacher_cfg.get("r_star", None)
+        r_star = resolve_r_star(raw_r_star, int(d) if d is not None else None)
+
+        lambda_reg = training_cfg.get("lambda_reg", None)
+        learning_rate = training_cfg.get("learning_rate", None)
+        n_steps = training_cfg.get("n_steps", None)
+
     if d is None:
         d = extract_d_from_rows(rows)
+
+    if rows:
+        first = rows[0]
+
+        if T is None:
+            T = get_int(first, "T")
+        if r is None:
+            r = get_int(first, "r")
+        if r_star is None:
+            r_star = get_int(first, "r_star")
+        if kappa is None:
+            kappa = get_float(first, "kappa")
+        if kappa_star is None:
+            kappa_star = get_float(first, "kappa_star")
+        if lambda_reg is None:
+            lambda_reg = get_float(first, "lambda_reg")
+        if learning_rate is None:
+            learning_rate = get_float(first, "learning_rate")
+        if n_steps is None:
+            n_steps = get_int(first, "n_steps")
 
     if d is None:
         print(
             f"[skip] Could not infer d from sweep_config.json, run config*.json, "
             f"or summary.csv for {summary_path}"
         )
+
+    if d is not None:
+        d = int(d)
+
+    if T is not None:
+        T = int(T)
+
+    if r is not None:
+        r = int(r)
+
+    if r_star is not None:
+        r_star = resolve_r_star(r_star, d)
+
+    if kappa is None and r is not None and d is not None:
+        kappa = float(r) / float(d)
+
+    if kappa_star is None and r_star is not None and d is not None:
+        kappa_star = float(r_star) / float(d)
 
     mask_label = format_mask_label(masking_strategy, masks_per_sample)
     if mask_label is None:
@@ -289,49 +294,20 @@ def extract_metadata(summary_path: Path, rows: list[dict]) -> dict:
         "config_signature": config_signature,
         "config_signature_safe": sanitize_filename(config_signature),
         "d": int(d) if d is not None else None,
+        "T": int(T) if T is not None else None,
+        "r": int(r) if r is not None else None,
+        "r_star": int(r_star) if r_star is not None else None,
+        "kappa": float(kappa) if kappa is not None else None,
+        "kappa_star": float(kappa_star) if kappa_star is not None else None,
+        "lambda_reg": float(lambda_reg) if lambda_reg is not None else None,
+        "learning_rate": float(learning_rate) if learning_rate is not None else None,
+        "n_steps": int(n_steps) if n_steps is not None else None,
         "mask_label": mask_label,
         "config_name": config_name,
         "sweep_name": sweep_name,
         "seed": seed,
         "summary_path": str(summary_path),
     }
-
-
-def grouped_mean_by_ntrain(rows: list[dict]) -> list[dict]:
-    grouped: dict[int, dict[str, list[float]]] = {}
-
-    keys = [
-        "cosine_S_S_star",
-        "random_baseline_cosine_S_S_star",
-        "random_baseline_cosine_S_S_star_mean",
-    ]
-
-    for row in rows:
-        n_train = get_int(row, "n_train")
-        if n_train is None:
-            continue
-
-        grouped.setdefault(n_train, {key: [] for key in keys})
-
-        for key in keys:
-            value = get_float(row, key)
-            if value is not None:
-                grouped[n_train][key].append(value)
-
-    out = []
-
-    for n_train in sorted(grouped):
-        item = {"n_train": n_train}
-
-        for key, values in grouped[n_train].items():
-            if values:
-                item[key] = float(np.mean(values))
-            else:
-                item[key] = None
-
-        out.append(item)
-
-    return out
 
 
 def baseline_value(row: dict, mean_keys: list[str]) -> float | None:
@@ -362,6 +338,7 @@ def first_crossing_against_baseline(
             return int(row["n_train"]), float(learned), float(baseline)
 
     return None, None, None
+
 
 def first_crossing_against_constant_baseline(
     rows_by_ntrain: list[dict],
@@ -394,9 +371,18 @@ def add_crossing(
         baseline_mean_keys=baseline_mean_keys,
     )
 
+    kappa_star = out.get("kappa_star")
+    if kappa_star is not None:
+        kappa_star = float(kappa_star)
+
     out[f"{prefix}_cross_ntrain"] = ntrain
     out[f"{prefix}_cross_alpha"] = ntrain / (d ** 2) if ntrain is not None else None
     out[f"{prefix}_cross_alpha_linear"] = ntrain / d if ntrain is not None else None
+    out[f"{prefix}_cross_alpha_kappa"] = (
+        ntrain / (kappa_star * (d ** 2))
+        if ntrain is not None and kappa_star is not None and kappa_star > 0
+        else None
+    )
     out[f"{prefix}_cross_value"] = learned_value
     out[f"{prefix}_cross_baseline"] = baseline_threshold
 
@@ -415,9 +401,18 @@ def add_constant_crossing(
         baseline=baseline,
     )
 
+    kappa_star = out.get("kappa_star")
+    if kappa_star is not None:
+        kappa_star = float(kappa_star)
+
     out[f"{prefix}_cross_ntrain"] = ntrain
     out[f"{prefix}_cross_alpha"] = ntrain / (d ** 2) if ntrain is not None else None
     out[f"{prefix}_cross_alpha_linear"] = ntrain / d if ntrain is not None else None
+    out[f"{prefix}_cross_alpha_kappa"] = (
+        ntrain / (kappa_star * (d ** 2))
+        if ntrain is not None and kappa_star is not None and kappa_star > 0
+        else None
+    )
     out[f"{prefix}_cross_value"] = learned_value
     out[f"{prefix}_cross_baseline"] = baseline_threshold
 
@@ -433,7 +428,7 @@ def analyze_summary(summary_path: Path) -> dict | None:
         print(f"[skip] Could not infer d/mask for {summary_path}")
         return None
 
-    rows_by_ntrain = grouped_mean_by_ntrain(rows)
+    rows_by_ntrain = grouped_mean_by_ntrain(rows, CROSSING_KEYS)
     if not rows_by_ntrain:
         return None
 
@@ -483,18 +478,28 @@ def write_csv(rows: list[dict], path: Path) -> None:
         "config_signature_safe",
         "mask_label",
         "d",
+        "T",
+        "r",
+        "r_star",
+        "kappa",
+        "kappa_star",
+        "lambda_reg",
+        "learning_rate",
+        "n_steps",
         "seed",
         "clt_baseline",
 
         "random_psd_cross_ntrain",
         "random_psd_cross_alpha",
         "random_psd_cross_alpha_linear",
+        "random_psd_cross_alpha_kappa",
         "random_psd_cross_value",
         "random_psd_cross_baseline",
 
         "clt_cross_ntrain",
         "clt_cross_alpha",
         "clt_cross_alpha_linear",
+        "clt_cross_alpha_kappa",
         "clt_cross_value",
         "clt_cross_baseline",
 
@@ -518,6 +523,7 @@ def write_csv(rows: list[dict], path: Path) -> None:
         writer.writeheader()
         writer.writerows(rows)
 
+
 def aggregate_crossings(rows: list[dict]) -> list[dict]:
     grouped: dict[tuple[str, str, int], list[dict]] = {}
 
@@ -535,10 +541,12 @@ def aggregate_crossings(rows: list[dict]) -> list[dict]:
         "random_psd_cross_ntrain",
         "random_psd_cross_alpha",
         "random_psd_cross_alpha_linear",
+        "random_psd_cross_alpha_kappa",
 
         "clt_cross_ntrain",
         "clt_cross_alpha",
         "clt_cross_alpha_linear",
+        "clt_cross_alpha_kappa",
     ]
 
     out = []
@@ -553,6 +561,15 @@ def aggregate_crossings(rows: list[dict]) -> list[dict]:
             "mask_label": mask_label,
             "d": d,
             "n_sweeps": len(group),
+
+            "T": one_or_mixed(group, "T"),
+            "r": one_or_mixed(group, "r"),
+            "r_star": one_or_mixed(group, "r_star"),
+            "kappa": one_or_mixed(group, "kappa"),
+            "kappa_star": one_or_mixed(group, "kappa_star"),
+            "lambda_reg": one_or_mixed(group, "lambda_reg"),
+            "learning_rate": one_or_mixed(group, "learning_rate"),
+            "n_steps": one_or_mixed(group, "n_steps"),
         }
 
         for key in metric_keys:
@@ -574,6 +591,7 @@ def aggregate_crossings(rows: list[dict]) -> list[dict]:
 
     return out
 
+
 def plot_curve(
     rows: list[dict],
     x_key: str,
@@ -581,6 +599,8 @@ def plot_curve(
     y_std_key: str,
     label: str,
     ax,
+    line_alpha: float = 0.7,
+    marker: str = "o",
 ) -> bool:
     xs = []
     means = []
@@ -607,10 +627,23 @@ def plot_curve(
     means_np = means_np[order]
     stds_np = stds_np[order]
 
-    ax.plot(xs_np, means_np, marker="o", linewidth=3, markersize=11, label=label)
+    ax.plot(
+        xs_np,
+        means_np,
+        marker=marker,
+        linewidth=3,
+        markersize=13,
+        label=label,
+        alpha=line_alpha,
+    )
 
     if np.any(stds_np > 0):
-        ax.fill_between(xs_np, means_np - stds_np, means_np + stds_np, alpha=0.15)
+        ax.fill_between(
+            xs_np,
+            means_np - stds_np,
+            means_np + stds_np,
+            alpha=0.12,
+        )
 
     return True
 
@@ -622,6 +655,7 @@ def plot_crossings_for_mask(
     prefix: str,
     baseline_label: str,
     filename_tag: str,
+    title_metadata: str,
 ) -> None:
     mask_rows = [row for row in rows if row.get("mask_label") == mask_label]
     if not mask_rows:
@@ -635,7 +669,7 @@ def plot_crossings_for_mask(
         x_key="d",
         y_mean_key=f"{prefix}_cross_ntrain_mean",
         y_std_key=f"{prefix}_cross_ntrain_std",
-        label=baseline_label,
+        label=mask_label,
         ax=ax,
     )
 
@@ -644,7 +678,8 @@ def plot_crossings_for_mask(
         ax.set_ylabel(r"min $n_{\mathrm{train}}$")
         ax.set_title(
             f"Minimum sample size to beat the {baseline_label}\n"
-            f"{mask_label}"
+            f"{mask_label}\n"
+            f"{title_metadata}"
         )
         ax.legend(frameon=True)
         fig.tight_layout()
@@ -662,7 +697,7 @@ def plot_crossings_for_mask(
         x_key="d",
         y_mean_key=f"{prefix}_cross_alpha_mean",
         y_std_key=f"{prefix}_cross_alpha_std",
-        label=baseline_label,
+        label=mask_label,
         ax=ax,
     )
 
@@ -671,7 +706,8 @@ def plot_crossings_for_mask(
         ax.set_ylabel(r"min $\alpha = n_{\mathrm{train}}/d^2$")
         ax.set_title(
             f"Minimum quadratically normalized sample size to beat the {baseline_label}\n"
-            f"{mask_label}, with " + r"$\alpha = n_{\mathrm{train}}/d^2$"
+            f"{mask_label}, with " + r"$\alpha = n_{\mathrm{train}}/d^2$" + "\n"
+            f"{title_metadata}"
         )
         ax.legend(frameon=True)
         fig.tight_layout()
@@ -689,7 +725,7 @@ def plot_crossings_for_mask(
         x_key="d",
         y_mean_key=f"{prefix}_cross_alpha_linear_mean",
         y_std_key=f"{prefix}_cross_alpha_linear_std",
-        label=baseline_label,
+        label=mask_label,
         ax=ax,
     )
 
@@ -698,12 +734,41 @@ def plot_crossings_for_mask(
         ax.set_ylabel(r"min $\alpha_{\mathrm{lin}} = n_{\mathrm{train}}/d$")
         ax.set_title(
             f"Minimum linearly normalized sample size to beat the {baseline_label}\n"
-            f"{mask_label}, with " + r"$\alpha_{\mathrm{lin}} = n_{\mathrm{train}}/d$"
+            f"{mask_label}, with " + r"$\alpha_{\mathrm{lin}} = n_{\mathrm{train}}/d$" + "\n"
+            f"{title_metadata}"
         )
         ax.legend(frameon=True)
         fig.tight_layout()
         fig.savefig(
             output_dir / f"min_alpha_linear_vs_d__{filename_tag}__{mask_label}.png",
+            bbox_inches="tight",
+        )
+    plt.close(fig)
+
+    # n_cross/(kappa_star d^2) over d
+    fig, ax = plt.subplots(figsize=(14, 10))
+
+    plotted = plot_curve(
+        rows=mask_rows,
+        x_key="d",
+        y_mean_key=f"{prefix}_cross_alpha_kappa_mean",
+        y_std_key=f"{prefix}_cross_alpha_kappa_std",
+        label=mask_label,
+        ax=ax,
+    )
+
+    if plotted:
+        ax.set_xlabel(r"$d$")
+        ax.set_ylabel(r"min $n_{\mathrm{train}}/(\kappa^\star d^2)$")
+        ax.set_title(
+            f"Minimum rank-normalized sample size to beat the {baseline_label}\n"
+            f"{mask_label}, with " + r"$n_{\mathrm{train}}/(\kappa^\star d^2)$" + "\n"
+            f"{title_metadata}"
+        )
+        ax.legend(frameon=True)
+        fig.tight_layout()
+        fig.savefig(
+            output_dir / f"min_alpha_kappa_vs_d__{filename_tag}__{mask_label}.png",
             bbox_inches="tight",
         )
     plt.close(fig)
@@ -714,6 +779,7 @@ def plot_all_masks_crossing(
     prefix: str,
     baseline_label: str,
     filename_tag: str,
+    title_metadata: str,
 ) -> None:
     masks = sorted({str(row["mask_label"]) for row in rows if row.get("mask_label") is not None})
 
@@ -721,7 +787,8 @@ def plot_all_masks_crossing(
     fig, ax = plt.subplots(figsize=(14, 10))
 
     plotted = False
-    for mask in masks:
+    for i, mask in enumerate(masks):
+        marker = MARKERS[i % len(MARKERS)]
         mask_rows = [row for row in rows if row.get("mask_label") == mask]
         plotted |= plot_curve(
             rows=mask_rows,
@@ -730,6 +797,7 @@ def plot_all_masks_crossing(
             y_std_key=f"{prefix}_cross_ntrain_std",
             label=mask,
             ax=ax,
+            marker=marker,
         )
 
     if plotted:
@@ -737,7 +805,8 @@ def plot_all_masks_crossing(
         ax.set_ylabel(r"min $n_{\mathrm{train}}$")
         ax.set_title(
             f"Minimum sample size to beat the {baseline_label}\n"
-            "comparison across masking strategies"
+            "comparison across masking strategies\n"
+            f"{title_metadata}"
         )
         ax.legend(frameon=True)
         fig.tight_layout()
@@ -751,7 +820,8 @@ def plot_all_masks_crossing(
     fig, ax = plt.subplots(figsize=(14, 10))
 
     plotted = False
-    for mask in masks:
+    for i, mask in enumerate(masks):
+        marker = MARKERS[i % len(MARKERS)]
         mask_rows = [row for row in rows if row.get("mask_label") == mask]
         plotted |= plot_curve(
             rows=mask_rows,
@@ -760,6 +830,7 @@ def plot_all_masks_crossing(
             y_std_key=f"{prefix}_cross_alpha_std",
             label=mask,
             ax=ax,
+            marker=marker,
         )
 
     if plotted:
@@ -768,6 +839,8 @@ def plot_all_masks_crossing(
         ax.set_title(
             f"Minimum quadratically normalized sample size to beat the {baseline_label}\n"
             r"comparison across masking strategies, $\alpha = n_{\mathrm{train}}/d^2$"
+            "\n"
+            f"{title_metadata}"
         )
         ax.legend(frameon=True)
         fig.tight_layout()
@@ -781,7 +854,8 @@ def plot_all_masks_crossing(
     fig, ax = plt.subplots(figsize=(14, 10))
 
     plotted = False
-    for mask in masks:
+    for i, mask in enumerate(masks):
+        marker = MARKERS[i % len(MARKERS)]
         mask_rows = [row for row in rows if row.get("mask_label") == mask]
         plotted |= plot_curve(
             rows=mask_rows,
@@ -790,6 +864,7 @@ def plot_all_masks_crossing(
             y_std_key=f"{prefix}_cross_alpha_linear_std",
             label=mask,
             ax=ax,
+            marker=marker,
         )
 
     if plotted:
@@ -798,6 +873,8 @@ def plot_all_masks_crossing(
         ax.set_title(
             f"Minimum linearly normalized sample size to beat the {baseline_label}\n"
             r"comparison across masking strategies, $\alpha_{\mathrm{lin}} = n_{\mathrm{train}}/d$"
+            "\n"
+            f"{title_metadata}"
         )
         ax.legend(frameon=True)
         fig.tight_layout()
@@ -807,19 +884,56 @@ def plot_all_masks_crossing(
         )
     plt.close(fig)
 
+    # n_cross / (kappa_star d^2) over d
+    fig, ax = plt.subplots(figsize=(14, 10))
+
+    plotted = False
+    for i, mask in enumerate(masks):
+        marker = MARKERS[i % len(MARKERS)]
+        mask_rows = [row for row in rows if row.get("mask_label") == mask]
+        plotted |= plot_curve(
+            rows=mask_rows,
+            x_key="d",
+            y_mean_key=f"{prefix}_cross_alpha_kappa_mean",
+            y_std_key=f"{prefix}_cross_alpha_kappa_std",
+            label=mask,
+            ax=ax,
+            marker=marker,
+        )
+
+    if plotted:
+        ax.set_xlabel(r"$d$")
+        ax.set_ylabel(r"min $n_{\mathrm{train}}/(\kappa^\star d^2)$")
+        ax.set_title(
+            f"Minimum rank-normalized sample size to beat the {baseline_label}\n"
+            r"comparison across masking strategies, $n_{\mathrm{train}}/(\kappa^\star d^2)$"
+            "\n"
+            f"{title_metadata}"
+        )
+        ax.legend(frameon=True)
+        fig.tight_layout()
+        fig.savefig(
+            output_dir / f"min_alpha_kappa_vs_d__all_masks__{filename_tag}.png",
+            bbox_inches="tight",
+        )
+    plt.close(fig)
+
+
 def plot_all_masks_loglog_ntrain(
     rows: list[dict],
     output_dir: Path,
     prefix: str,
     baseline_label: str,
     filename_tag: str,
+    title_metadata: str,
 ) -> None:
     masks = sorted({str(row["mask_label"]) for row in rows if row.get("mask_label") is not None})
 
     fig, ax = plt.subplots(figsize=(14, 10))
 
     plotted = False
-    for mask in masks:
+    for i, mask in enumerate(masks):
+        marker = MARKERS[i % len(MARKERS)]
         mask_rows = [row for row in rows if row.get("mask_label") == mask]
         plotted |= plot_curve(
             rows=mask_rows,
@@ -828,6 +942,7 @@ def plot_all_masks_loglog_ntrain(
             y_std_key=f"{prefix}_cross_ntrain_std",
             label=mask,
             ax=ax,
+            marker=marker,
         )
 
     if plotted:
@@ -837,7 +952,8 @@ def plot_all_masks_loglog_ntrain(
         ax.set_ylabel(r"min $n_{\mathrm{train}}$")
         ax.set_title(
             f"Minimum sample size to beat the {baseline_label}\n"
-            "comparison across masking strategies, log-log scale"
+            "comparison across masking strategies, log-log scale\n"
+            f"{title_metadata}"
         )
         ax.legend(frameon=True)
         fig.tight_layout()
@@ -868,8 +984,10 @@ def write_group_report(aggregated_rows: list[dict], output_path: Path) -> None:
             rows = [row for row in aggregated_rows if row["config_signature"] == signature]
             masks = sorted({row["mask_label"] for row in rows})
             ds = sorted({int(row["d"]) for row in rows})
+            title_metadata = build_title_metadata(rows)
 
             f.write(f"config_signature:\n{signature}\n")
+            f.write(f"metadata: {title_metadata}\n")
             f.write(f"masks: {', '.join(masks)}\n")
             f.write(f"d values: {ds}\n")
             f.write(f"number of grouped rows: {len(rows)}\n\n")
@@ -945,6 +1063,8 @@ def main() -> None:
             if row["config_signature"] == signature
         ]
 
+        title_metadata = build_title_metadata(signature_rows)
+
         signature_dir = output_dir / sanitize_filename(signature)
         signature_dir.mkdir(parents=True, exist_ok=True)
 
@@ -979,6 +1099,7 @@ def main() -> None:
                     prefix=spec["prefix"],
                     baseline_label=spec["baseline_label"],
                     filename_tag=spec["filename_tag"],
+                    title_metadata=title_metadata,
                 )
 
             plot_all_masks_crossing(
@@ -987,6 +1108,7 @@ def main() -> None:
                 prefix=spec["prefix"],
                 baseline_label=spec["baseline_label"],
                 filename_tag=spec["filename_tag"],
+                title_metadata=title_metadata,
             )
 
             plot_all_masks_loglog_ntrain(
@@ -995,6 +1117,7 @@ def main() -> None:
                 prefix=spec["prefix"],
                 baseline_label=spec["baseline_label"],
                 filename_tag=spec["filename_tag"],
+                title_metadata=title_metadata,
             )
 
     print(f"[done] Wrote per-sweep baseline comparisons to: {crossing_path}")

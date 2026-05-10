@@ -903,8 +903,7 @@ def main() -> None:
             run_name=args.run_name,
         )
 
-        # Backward compatibility
-        # old configs contain experiment.seed only, new ones contain experiment.master_seed only
+        # backward compatibility, old configs contain experiment.seed only, new ones contain experiment.master_seed only
         experiment_cfg = config.setdefault("experiment", {})
         if args.seed is not None:
             experiment_cfg["master_seed"] = int(args.seed)

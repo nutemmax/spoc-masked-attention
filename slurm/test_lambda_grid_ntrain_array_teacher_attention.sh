@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --mail-user=emma.anastassova@epfl.ch
-#SBATCH --output=logs/grids/d200_kappa0p6_teacher_%A_%a.out
-#SBATCH --error=logs/grids/d200_kappa0p6_teacher_%A_%a.err
+#SBATCH --output=logs/grids/kappa_0p4/d25-50_kappa0p4_teacher_%A_%a.out
+#SBATCH --error=logs/grids/kappa_0p4/d25-50_kappa0p4_teacher_%A_%a.err
 #SBATCH --mail-type=FAIL
 #SBATCH --partition=academic
 
@@ -12,7 +12,7 @@ cd "$PROJECT_DIR"
 
 mkdir -p logs/grids
 
-CONFIG_DIR="/home/anastass/spoc-masked-attention/configs/teacher_attention/tests-lambda-scaling_kappa0p6/d200"
+CONFIG_DIR="/home/anastass/spoc-masked-attention/configs/teacher_attention/tests-lambda-scaling_kappa0p4/d25-50"
 
 if [ ! -d "$CONFIG_DIR" ]; then
   echo "Config directory does not exist: $CONFIG_DIR"

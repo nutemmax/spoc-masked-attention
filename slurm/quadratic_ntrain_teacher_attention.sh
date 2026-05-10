@@ -1,19 +1,18 @@
 #!/bin/bash
-#SBATCH --job-name=d25-75-kappa0p8-teacher-ntrain
-#SBATCH --output=logs/kappa0p8/d25-75-teacher_ntrain_%A_%a.out
-#SBATCH --error=logs/kappa0p8/d25-75-teacher_ntrain_%A_%a.err
+#SBATCH --job-name=d75-k0p8-teacher-ntrain
+#SBATCH --output=logs/kappa0p8/d75-new/teacher_ntrain_%A_%a.out
+#SBATCH --error=logs/kappa0p8/d75-new/teacher_ntrain_%A_%a.err
 #SBATCH --partition=academic
 #SBATCH --time=24:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mail-user=emma.anastassova@epfl.ch
 #SBATCH --mail-type=FAIL
 #SBATCH --mem=5G
-#SBATCH --array=0-41%21 # %18 
+#SBATCH --array=0-41%30 # %30 
 
 set -euo pipefail
-
-CONFIG_PATH=$1
-# CONFIG_PATH="/home/anastass/spoc-masked-attention/configs/default-teacher-attention-maskrandom.yaml"
+# CONFIG_PATH=$1
+CONFIG_PATH="/home/anastass/spoc-masked-attention/configs/teacher_attention/low-rank_kappa0p8_lambda0p05/d25-75/maskrandom_k2_r_60_rstar_60_sigstar_1_bstar_1_beta_1_d75_T5_lambda0p05_lr0p001_iter5000_pca60.yaml"
 
 
 # ====== READ CONFIG INFO ======
