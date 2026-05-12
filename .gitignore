@@ -22,6 +22,8 @@ logs/
 # results!!!
 results/
 wandb/
+.fixed-sigma/
+.old-teacher-attention/
 
 
 # OS files
