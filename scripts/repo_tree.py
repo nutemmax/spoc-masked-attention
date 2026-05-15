@@ -1,6 +1,7 @@
 from pathlib import Path
 
 ROOT = Path(".").resolve()
+OVERLEAF = ROOT / "overleaf"
 
 # folders whose contents should not be expanded
 NO_DESCEND = {"results", "logs", "configs"}
@@ -15,7 +16,8 @@ IGNORE = {
     ".venv",
     "venv",
     "wandb",
-    "overleaf",
+    # "overleaf",
+    "results",
     "spoc"
 }
 
@@ -41,4 +43,4 @@ def tree(path: Path, prefix: str = "", is_root: bool = True) -> None:
 
 
 if __name__ == "__main__":
-    tree(ROOT)
+    tree(OVERLEAF)

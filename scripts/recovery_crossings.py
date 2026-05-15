@@ -24,6 +24,7 @@ from crossing_utils import (
     read_json,
     resolve_r_star,
     sanitize_filename,
+    group_teacher_signature,
 )
 
 
@@ -46,27 +47,6 @@ CROSSING_KEYS = [
     "random_baseline_cosine_S_S_star",
     "random_baseline_cosine_S_S_star_mean",
 ]
-
-
-
-def group_teacher_signature(
-    teacher_init: str | None,
-    sigma_star: float | None,
-) -> tuple[str, float]:
-    """
-    Group standard_gaussian together with scaled_gaussian at sigma_star = 1.0.
-    """
-    init = "NA" if teacher_init is None else str(teacher_init)
-    sigma = 1.0 if sigma_star is None else float(sigma_star)
-
-    if init == "standard_gaussian":
-        return "scaled_gaussian", 1.0
-
-    if init == "scaled_gaussian" and np.isclose(sigma, 1.0):
-        return "scaled_gaussian", 1.0
-
-    return init, sigma
-
 
 
 

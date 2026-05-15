@@ -50,4 +50,4 @@ python -u scripts/plot_cosine_by_d.py \
 
 # Crossings over kappa
 python scripts/crossings_over_kappa.py \
-  --root $SWEEP_ROOT/iter_5000
+  --root $SWEEP_ROOT
