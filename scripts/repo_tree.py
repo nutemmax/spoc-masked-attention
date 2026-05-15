@@ -17,7 +17,6 @@ IGNORE = {
     "venv",
     "wandb",
     # "overleaf",
-    "results",
     "spoc"
 }
 
