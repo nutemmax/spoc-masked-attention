@@ -6,10 +6,11 @@ module load gcc/13.2.0
 module load python/3.11.7
 source .venv/bin/activate
 SWEEP_ROOT="/home/anastass/spoc-masked-attention/results/collective/"
+STATS_ROOT="/home/anastass/spoc-masked-attention/results/collective/kappa_star_0p2"
 
 # ========== COLLECTIVE STATISTICS ============
-# echo "Aggregating sweeps under: $SWEEP_ROOT"
-# python -u scripts/aggregate_teacher_attention_sweep.py --sweep-dir "$SWEEP_ROOT/" --force
+echo "Aggregating sweeps under: $SWEEP_ROOT"
+python -u scripts/aggregate_teacher_attention_sweep.py --sweep-dir "$STATS_ROOT/" --force
 
 # ===== KAPPA STAR : recovery crossings and cosine similarity plotted by d =========
 

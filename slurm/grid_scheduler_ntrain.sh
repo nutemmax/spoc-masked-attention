@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --mail-user=emma.anastassova@epfl.ch
-#SBATCH --output=logs/grids/kappa0p8-new/teacher_grids_%A_%a.out
-#SBATCH --error=logs/grids/kappa0p8-new/teacher_grids_%A_%a.err
+#SBATCH --output=logs/grids/kappa0p2-new/teacher_grids_%A_%a.out
+#SBATCH --error=logs/grids/kappa0p2-new/teacher_grids_%A_%a.err
 #SBATCH --mail-type=FAIL
 #SBATCH --partition=academic
 
@@ -12,7 +12,7 @@ cd "$PROJECT_DIR"
 
 mkdir -p logs/grids
 
-CONFIG_DIR="/home/anastass/spoc-masked-attention/configs/teacher_attention/low-rank_kappa0p8_lambda0p05/d150/"
+CONFIG_DIR="/home/anastass/spoc-masked-attention/configs/teacher_attention/low-rank_kappa0p2_lambda0p05/d175-200/"
 
 if [ ! -d "$CONFIG_DIR" ]; then
   echo "Config directory does not exist: $CONFIG_DIR"
@@ -33,5 +33,5 @@ echo "Number of configs: ${#CONFIGS[@]}"
 
 for config in "${CONFIGS[@]}"; do
   echo "Submitting n_train sweep for $config"
-  sbatch slurm/quadratic_ntrain_teacher_attention.sh "$config"
+  sbatch slurm/quadratic_ntrain.sh "$config"
 done

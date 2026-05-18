@@ -4,7 +4,7 @@ import itertools
 from pathlib import Path
 import yaml
 
-OUTPUT_DIR = Path("configs/teacher_attention/low-rank_kappa0p8_lambda0p05/d25-75/")
+OUTPUT_DIR = Path("configs/teacher_attention/low-rank_kappa0p2_lambda0p05/d175-200/")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 BASE_CONFIG = {
     "experiment": {
@@ -155,8 +155,8 @@ def main() -> None:
     tie_r_to_d = False
 
     # used only when tie_r_to_d = False.
-    kappa_values = [0.8]
-    kappa_star_values = [0.8]
+    kappa_values = [0.2]
+    kappa_star_values = [0.2]
 
     # used only when tie_r_to_d = False.
     # for matched low-rank r = r_star, "student_rank" and "teacher_rank" are equivalent.
@@ -168,14 +168,14 @@ def main() -> None:
     sigma_stars = [1.0]
 
     masking_configs = [
-        # ("random", 1),
+        ("random", 1),
         ("k_random", 2),
-        # ("all", 1),
-        # ("multi_random", 2),
-        # ("last", 1),
+        ("all", 1),
+        ("multi_random", 2),
+        ("last", 1),
     ]
 
-    ds = [50, 75]
+    ds = [175, 200]
     Ts = [5]
 
     beta_stars = [1.0]
