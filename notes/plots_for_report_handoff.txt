@@ -1,0 +1,497 @@
+HANDOFF: Analysis folder / figures organization for SPOC masked-attention report
+
+Context
+-------
+
+The report is based on the final analysis plots generated from the teacher-attention experiments in the repository `spoc-masked-attention`. The relevant scripts are:
+
+1. `scripts/plot_analysis.py`
+   - Main analysis script.
+   - Produces teacher-recovery plots, mean-over-d plots, crossing-threshold plots, and some older train/pop-risk plots.
+   - Main output root: `results/analysis/`.
+
+2. `scripts/plot_risk_analysis.py`
+   - Dedicated risk/generalisation analysis script.
+   - Produces the final population-risk vs cosine-similarity plots requested by Vittorio.
+   - Main output root: `results/analysis/risk_analysis/`.
+
+3. `scripts/correlation_cosine_risk.py`
+   - Produces one CSV per masking scheme with Spearman/Pearson correlations between cosine similarity and negative population risk.
+   - Main output root: `results/analysis/risk_analysis/correlations/`.
+
+In Overleaf, I will upload the whole analysis folder either as:
+
+    figures/analysis/...
+
+or directly as:
+
+    analysis/...
+
+Please write LaTeX figure paths assuming I may need to prepend either `figures/` or not. For example, use placeholders like:
+
+    \includegraphics[width=\textwidth]{figures/analysis/...}
+
+and I can remove `figures/` if needed.
+
+Main analysis folder structure
+------------------------------
+
+The full analysis folder has the following conceptual structure:
+
+    analysis/
+    ├── cosine_by_d_curves/
+    ├── cosine_mean_by_kappa/
+    ├── kappa_analysis/
+    ├── risk_analysis/
+    └── possibly train_vs_risk/ or older risk folders
+
+The most important folders for the report are:
+
+1. `analysis/cosine_by_d_curves/`
+2. `analysis/cosine_mean_by_kappa/`
+3. `analysis/kappa_analysis/`
+4. `analysis/risk_analysis/`
+5. `analysis/risk_analysis/correlations/`
+
+The folder names under these directories often contain a long sanitized configuration signature, for example something like:
+
+    data_model-teacher_attention_T-5_mask_value-1p0_teacher_init-scaled_gaussian_sigma_star-1_beta_star-1p0_beta-1p0_normali
+
+This corresponds to the main teacher-attention experimental setting. The exact name can be long; use the existing directory names exactly when referencing figures.
+
+Important variables / notation
+------------------------------
+
+The main quantities are:
+
+- \(d\): data dimension.
+- \(T\): sequence length, usually \(T=5\).
+- \(\kappa^\star = r^\star/d\): teacher rank ratio.
+- \(n_{\mathrm{train}}\): number of unique training samples.
+- \(S^\star\): teacher matrix.
+- \(S\): learned student matrix.
+- \(\cos(S,S^\star)\): cosine similarity / teacher-recovery metric.
+- \(R_{\mathrm{pop}}\): population risk / generalisation error.
+- \(n_{\mathrm{cross}}\): first sample size where cosine similarity crosses a baseline.
+
+Important caveat:
+
+For masking schemes with multiple masked views per unique sample, such as `maskall` and `maskrandom_k2` / `maskmulti_k2`, the reported \(n_{\mathrm{train}}\) and \(n_{\mathrm{cross}}\) are in terms of unique underlying samples, not expanded masked views. Thus the main plots answer: “how many independent samples are needed?” If discussing fairness across masking schemes, mention that multi-mask schemes receive more masked reconstruction constraints per sample. A possible masked-view count would be \(m n_{\mathrm{cross}}\), with \(m=2\) for two-mask schemes and \(m=T\) for `maskall`, but this is not the main normalization unless explicitly plotted.
+
+Folder 1: `cosine_by_d_curves/`
+-------------------------------
+
+Purpose:
+Shows teacher recovery as a function of sample size for each dimension \(d\), fixing \(\kappa^\star\) and masking scheme.
+
+Typical structure:
+
+    analysis/cosine_by_d_curves/
+    └── <config_signature>/
+        └── kappa_star_0p2/
+        └── kappa_star_0p4/
+        └── kappa_star_0p6/
+        └── kappa_star_0p8/
+        └── kappa_star_1p0/
+            ├── cosine_vs_ntrain_by_d__<mask>.png
+            ├── cosine_vs_ntrain_by_d__<mask>__with_random_psd_baseline.png
+            ├── cosine_vs_ntrain_over_d_by_d__<mask>__with_random_psd_baseline.png
+            ├── cosine_vs_ntrain_over_d2_by_d__<mask>__with_random_psd_baseline.png
+            ├── cosine_vs_ntrain_over_d2_by_d__<mask>__with_random_psd_baseline__zoom0_10.png
+            └── cosine_vs_ntrain_over_d2_by_d__<mask>__with_random_psd_baseline__zoom0_20.png
+
+Important plots:
+- `cosine_vs_ntrain_over_d2_by_d__<mask>__with_random_psd_baseline.png`
+- zoomed versions:
+  - `__zoom0_10.png`
+  - `__zoom0_20.png`
+
+These are important because the main empirical claim is that teacher recovery approximately collapses when plotted against \(n_{\mathrm{train}}/d^2\). Use these plots in the teacher-recovery/sample-complexity section.
+
+Recommended report usage:
+Use 1–2 representative masking schemes in the main text, likely:
+- `maskrandom`
+- maybe `maskall` or `maskrandom_k2` if comparing masking schemes
+
+Put remaining masking schemes in appendix.
+
+Folder 2: `cosine_mean_by_kappa/`
+---------------------------------
+
+Purpose:
+Shows mean cosine similarity averaged over dimensions \(d\), with one curve per \(\kappa^\star\).
+
+Typical files:
+
+    analysis/cosine_mean_by_kappa/
+    ├── cosine_mean_over_d_by_kappa__<mask>.png
+    ├── cosine_mean_over_d_by_kappa__<mask>__zoom0_10.png
+    ├── cosine_mean_over_d_by_kappa__<mask>__zoom0_20.png
+    ├── cosine_mean_over_d_by_kappa__<mask>__x_kappa_d2.png
+    ├── cosine_mean_over_d_by_kappa__<mask>__x_kappa_d2__zoom0_10.png
+    └── cosine_mean_over_d_by_kappa__<mask>__x_kappa_d2__zoom0_20.png
+
+Interpretation:
+- `x_kappa_d2` means x-axis is \(n_{\mathrm{train}}/(\kappa^\star d^2)\).
+- Non-`x_kappa_d2` means x-axis is \(n_{\mathrm{train}}/d^2\).
+
+Important plots:
+- `cosine_mean_over_d_by_kappa__<mask>.png`
+- `cosine_mean_over_d_by_kappa__<mask>__x_kappa_d2.png`
+- zoomed versions if the main plot is too wide.
+
+Recommended report usage:
+Use these to discuss the effect of \(\kappa^\star\). If the curves align better under \(n_{\mathrm{train}}/(\kappa^\star d^2)\), mention this as evidence that rank ratio influences the effective recovery scale.
+
+Folder 3: `kappa_analysis/`
+---------------------------
+
+Purpose:
+Contains crossing-threshold analysis. This is the most important folder for quantitative scaling arguments.
+
+Typical structure:
+
+    analysis/kappa_analysis/
+    ├── crossings_per_sweep.csv
+    ├── crossings_aggregated.csv
+    └── <base_config_signature>/
+        ├── random_psd_crossings/
+        └── clt_crossings/
+
+The two baselines are:
+- `random_psd_crossings/`: crossing relative to the random PSD cosine baseline.
+- `clt_crossings/`: crossing relative to the \(1/\sqrt d\) baseline.
+
+Each baseline folder contains plots such as:
+
+    min_ncross_vs_d__all_masks__random_psd.png
+    min_ncross_vs_d__all_masks_loglog__random_psd.png
+    ncross_vs_kappa__by_d__<mask>__random_psd.png
+    ncross_over_d_vs_kappa__by_d__<mask>__random_psd.png
+    ncross_over_d2_vs_kappa__by_d__<mask>__random_psd.png
+    ncross_over_kappa_d2_vs_kappa__by_d__<mask>__random_psd.png
+
+    loglog_ncross_vs_kappa__by_d__<mask>__random_psd.png
+    loglog_ncross_over_d_vs_kappa__by_d__<mask>__random_psd.png
+    loglog_ncross_over_d2_vs_kappa__by_d__<mask>__random_psd.png
+    logy_ncross_over_kappa_d2_vs_kappa__by_d__<mask>__random_psd.png
+
+    heatmap_ncross_over_d_kappa__<mask>__random_psd.png
+    heatmap_ncross_over_d2_over_d_kappa__<mask>__random_psd.png
+    heatmap_ncross_over_kappa_d2_over_d_kappa__<mask>__random_psd.png
+
+The exact filenames may vary slightly, but the key tags are:
+- `ncross`
+- `ncross_over_d`
+- `ncross_over_d2`
+- `ncross_over_kappa_d2`
+- `heatmap`
+- `random_psd`
+- `clt`
+
+Important plots:
+1. For scaling with dimension:
+   - `min_ncross_vs_d__all_masks__random_psd.png`
+   - `min_ntrain_vs_d__all_masks_loglog__random_psd.png`
+   - analogous `clt` versions if useful.
+
+2. For dependence on \(\kappa^\star\):
+   - `ncross_over_d2_vs_kappa__by_d__<mask>__random_psd.png`
+   - `ncross_over_kappa_d2_vs_kappa__by_d__<mask>__random_psd.png`
+   - log-log versions if discussing slopes.
+
+3. For compact summaries:
+   - heatmaps over \((d,\kappa^\star)\), especially for:
+     - \(n_{\mathrm{cross}}/d^2\)
+     - \(n_{\mathrm{cross}}/(\kappa^\star d^2)\)
+
+Recommended report usage:
+Use crossing plots to support the claim that teacher recovery occurs closer to a quadratic sample scale in \(d\), i.e. approximately \(n_{\mathrm{train}} \sim d^2\), possibly with dependence on \(\kappa^\star\).
+
+Use heatmaps mainly in the appendix unless they are visually very clear. In the main text, a line plot is usually easier to read.
+
+Important implementation detail:
+The final crossing plots should be grouped by a base configuration signature with `kappa` and `kappa_star` removed. Otherwise heatmaps only show one \(\kappa^\star\) on the x-axis. The fixed version should produce heatmaps with all five \(\kappa^\star\) values on the x-axis.
+
+Folder 4: `risk_analysis/`
+--------------------------
+
+Purpose:
+This is the final population-risk/generalisation validation required by Vittorio. It checks whether higher cosine similarity corresponds to lower population risk.
+
+Typical structure:
+
+    analysis/risk_analysis/
+    └── <base_config_signature>/
+        ├── scatter_by_kappa/
+        └── kappa_star_0p2/
+            ├── stacked/
+            ├── scatter_by_d/
+            ├── risk_by_d/
+            └── gen_gap/
+        └── kappa_star_0p4/
+            ├── stacked/
+            ├── scatter_by_d/
+            ├── risk_by_d/
+            └── gen_gap/
+        └── ...
+
+Important subfolders:
+
+A. `kappa_star_X/scatter_by_d/`
+
+Files look like:
+
+    scatter_by_d_pop_risk_vs_cosine_<mask>_kappa0p6.png
+
+Meaning:
+- fixed masking scheme
+- fixed \(\kappa^\star\)
+- x-axis: \(\cos(S,S^\star)\)
+- y-axis: population risk
+- one curve per dimension \(d\)
+
+This is one of the most important plot types for the final report.
+
+Use this to say:
+For a fixed teacher rank ratio, increasing teacher alignment generally corresponds to decreasing population risk across dimensions.
+
+B. `scatter_by_kappa/`
+
+Files look like:
+
+    scatter_by_kappa_pop_risk_vs_cosine_<mask>_d100.png
+
+Meaning:
+- fixed masking scheme
+- fixed dimension \(d\)
+- x-axis: \(\cos(S,S^\star)\)
+- y-axis: population risk
+- one curve per \(\kappa^\star\)
+
+This is the second most important plot type for the final report.
+
+Use this to say:
+For a fixed dimension, the relation between teacher recovery and population risk remains visible across different teacher rank ratios.
+
+C. `kappa_star_X/stacked/`
+
+Files look like:
+
+    stacked_<mask>_d100_kappa0p6_full.png
+    stacked_<mask>_d100_kappa0p6_zoom_0_1000.png
+    ...
+
+Meaning:
+- top panel: cosine similarity vs \(n_{\mathrm{train}}\)
+- bottom panel: train loss / population risk vs \(n_{\mathrm{train}}\)
+
+These are useful for understanding dynamics but probably not essential in the main report unless one is very illustrative.
+
+D. `kappa_star_X/risk_by_d/`
+
+Files look like:
+
+    pop_risk_by_d_<mask>_kappa0p6_full.png
+    train_loss_by_d_<mask>_kappa0p6_full.png
+
+Meaning:
+- curves by \(d\)
+- y-axis is population risk or train loss
+- x-axis is \(n_{\mathrm{train}}\)
+
+These are useful diagnostics but secondary.
+
+E. `kappa_star_X/gen_gap/`
+
+Files show population risk minus train loss.
+
+Use with caution:
+The generalisation gap may be noisy and is not central to Vittorio’s request. I probably do not need these in the main report.
+
+Recommended main report usage from `risk_analysis/`:
+Use:
+- one `scatter_by_d` plot, e.g. fixed \(\kappa^\star=0.6\) or \(\kappa^\star=1.0\), for `maskrandom`;
+- one `scatter_by_kappa` plot, e.g. fixed \(d=100\) or \(d=150\), for `maskrandom`;
+- optionally one additional masking scheme in appendix.
+
+Main conclusion to write:
+The population-risk scatter plots support that the cosine similarity is not only a parameter-level recovery metric. Higher \(\cos(S,S^\star)\) generally corresponds to lower population risk. The relationship is not expected to be perfectly one-to-one because the loss depends on the induced attention/reconstruction behavior, not directly on Frobenius alignment to \(S^\star\).
+
+Folder 5: `risk_analysis/correlations/`
+---------------------------------------
+
+Purpose:
+Quantitative support for the cosine/population-risk relationship.
+
+Typical files:
+
+    analysis/risk_analysis/correlations/
+    ├── correlations_cosine_pop_risk__maskall.csv
+    ├── correlations_cosine_pop_risk__masklast.csv
+    ├── correlations_cosine_pop_risk__maskmulti_k2.csv
+    ├── correlations_cosine_pop_risk__maskrandom.csv
+    └── correlations_cosine_pop_risk__maskrandom_k2.csv
+
+Each CSV contains one row per \((d,\kappa^\star)\) pair for that masking scheme.
+
+Important columns:
+- `d`
+- `kappa_star`
+- `n_points`
+- `n_raw_rows`
+- `n_train_min`
+- `n_train_max`
+- `cosine_min`
+- `cosine_max`
+- `population_risk_min`
+- `population_risk_max`
+- `spearman_corr_cosine_neg_pop_risk`
+- `pearson_corr_cosine_neg_pop_risk`
+
+The most important column is:
+
+    spearman_corr_cosine_neg_pop_risk
+
+Interpretation:
+Positive values mean:
+
+    higher cosine similarity  <=>  lower population risk
+
+because the correlation is computed with `-population_risk`.
+
+Recommended report usage:
+Do not include all CSV rows in the main text. Instead, make a compact summary table with, for each masking scheme:
+- mean Spearman correlation over all \((d,\kappa^\star)\)
+- maybe min/max Spearman correlation
+- maybe number of positive correlations
+
+Example table columns:
+
+    Masking scheme | mean Spearman | min Spearman | max Spearman | # positive / total
+
+This table can go in the main report or appendix. If space is limited, include only the mean/min/max summary in the main report.
+
+Most relevant plots/figures for the final report
+------------------------------------------------
+
+Recommended main-report figures:
+
+1. Teacher recovery collapse:
+   From `cosine_by_d_curves/`
+   Use a plot like:
+
+       cosine_vs_ntrain_over_d2_by_d__maskrandom__with_random_psd_baseline__zoom0_20.png
+
+   Purpose:
+   Show that curves for different \(d\) approximately align under \(n_{\mathrm{train}}/d^2\).
+
+2. Mean recovery by \(\kappa^\star\):
+   From `cosine_mean_by_kappa/`
+   Use:
+
+       cosine_mean_over_d_by_kappa__maskrandom.png
+
+   or
+
+       cosine_mean_over_d_by_kappa__maskrandom__x_kappa_d2.png
+
+   Purpose:
+   Show dependence on teacher rank ratio.
+
+3. Crossing threshold scaling:
+   From `kappa_analysis/<base_config_signature>/random_psd_crossings/`
+   Use either:
+
+       min_ntrain_vs_d__all_masks_loglog__random_psd.png
+
+   or:
+
+       ncross_over_d2_vs_kappa__by_d__maskrandom__random_psd.png
+
+   Purpose:
+   Quantify the sample-complexity scale.
+
+4. Population risk vs cosine, curves by \(d\):
+   From `risk_analysis/<base_config_signature>/kappa_star_X/scatter_by_d/`
+   Use:
+
+       scatter_by_d_pop_risk_vs_cosine_maskrandom_kappa0p6.png
+
+   or similar.
+
+   Purpose:
+   Show that recovery correlates with functional generalisation.
+
+5. Population risk vs cosine, curves by \(\kappa^\star\):
+   From `risk_analysis/<base_config_signature>/scatter_by_kappa/`
+   Use:
+
+       scatter_by_kappa_pop_risk_vs_cosine_maskrandom_d100.png
+
+   Purpose:
+   Show the same relation across teacher rank ratios.
+
+6. Correlation summary table:
+   From `risk_analysis/correlations/`.
+   Do not include raw CSVs directly. Summarize them into a small table.
+
+What can go to appendix
+-----------------------
+
+Put the following in appendix if needed:
+
+- all masking schemes for cosine recovery;
+- all heatmaps over \((d,\kappa^\star)\);
+- CLT-baseline versions of crossing plots if the random-PSD baseline is the main one;
+- train loss / population risk vs \(n_{\mathrm{train}}\);
+- generalisation gap plots;
+- full correlation tables.
+
+Important report narrative
+--------------------------
+
+The report should not introduce new architectures now. The final story should be:
+
+1. We first tried simpler fixed-covariance settings, but attention did not show a meaningful advantage because the structure was too simple.
+
+2. We then introduced a teacher-attention data model where the sample covariance is generated through a hidden teacher matrix \(S^\star\).
+
+3. The student is trained through masked reconstruction and evaluated by:
+   - training loss,
+   - population risk,
+   - cosine similarity \(\cos(S,S^\star)\).
+
+4. The main empirical question is whether the student recovers \(S^\star\), and at what sample scale.
+
+5. The cosine plots suggest that recovery occurs at a scale closer to \(d^2\) than to \(d\).
+
+6. Crossing-threshold plots quantify this by measuring \(n_{\mathrm{cross}}\), the first sample size where the learned cosine similarity crosses a baseline.
+
+7. Finally, population-risk plots validate that teacher recovery is functionally meaningful:
+   higher \(\cos(S,S^\star)\) is generally associated with lower \(R_{\mathrm{pop}}\).
+
+8. The relation is not perfectly deterministic. This is expected because two matrices can have different Frobenius/cosine alignment while inducing similar attention or reconstruction behavior.
+
+Suggested wording for the generalisation validation section
+----------------------------------------------------------
+
+“In addition to measuring teacher recovery at the parameter level, we evaluate whether the recovery metric is functionally meaningful. For each masking scheme, we compare the cosine similarity \(\cos(S,S^\star)\) with the population risk \(R_{\mathrm{pop}}\). The resulting trajectories show that, in most regimes, increasing alignment with the teacher is associated with decreasing population risk. This supports the use of cosine similarity as a meaningful proxy for recovery. The relation is not expected to be exactly one-to-one, since the reconstruction objective depends on the induced attention maps rather than directly on the Frobenius alignment between \(S\) and \(S^\star\).”
+
+Suggested wording for the crossing threshold definition
+-------------------------------------------------------
+
+“We define \(n_{\mathrm{cross}}\) as the smallest value of \(n_{\mathrm{train}}\) for which the learned cosine similarity exceeds a chosen baseline. Unless stated otherwise, \(n_{\mathrm{train}}\) denotes the number of unique underlying training samples. For masking schemes that generate multiple masked views per sample, this does not count each masked view as an independent sample.”
+
+Important caution for file paths in LaTeX
+-----------------------------------------
+
+The actual folder names are long. Use exact paths copied from Overleaf after upload. Typical LaTeX structure will be:
+
+    \includegraphics[width=\textwidth]{figures/analysis/risk_analysis/<base_config_signature>/scatter_by_kappa/scatter_by_kappa_pop_risk_vs_cosine_maskrandom_d100.png}
+
+or if the folder is uploaded directly:
+
+    \includegraphics[width=\textwidth]{analysis/risk_analysis/<base_config_signature>/scatter_by_kappa/scatter_by_kappa_pop_risk_vs_cosine_maskrandom_d100.png}
+
+When drafting, use placeholders if necessary and replace with exact paths later.

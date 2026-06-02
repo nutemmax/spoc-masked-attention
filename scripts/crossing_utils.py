@@ -1,24 +1,22 @@
+# scripts/crossing_utils.py NEW
 from __future__ import annotations
 
 import csv
 import json
 import math
 import re
+from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 
+# ---------------------------------------------------------------------
+# File I/O
+# ---------------------------------------------------------------------
 
-def read_csv_rows(path: Path) -> list[dict[str, str]]:
-    with open(path, "r", encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-
-
-def read_json(path: Path) -> dict[str, Any] | None:
+def read_json(path: Path) -> dict | None:
     if not path.exists():
         return None
-
     try:
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -26,140 +24,54 @@ def read_json(path: Path) -> dict[str, Any] | None:
         return None
 
 
-def get_float(row: dict, key: str) -> float | None:
-    value = row.get(key)
-    if value is None or value == "":
-        return None
-
+def read_csv_rows(path: Path) -> list[dict[str, str]]:
+    if not path.exists():
+        return []
     try:
-        out = float(value)
-    except (TypeError, ValueError):
-        return None
-
-    if math.isnan(out) or math.isinf(out):
-        return None
-
-    return out
+        with open(path, "r", encoding="utf-8", newline="") as f:
+            return list(csv.DictReader(f))
+    except Exception:
+        return []
 
 
-def get_int(row: dict, key: str) -> int | None:
-    value = get_float(row, key)
-    if value is None:
-        return None
-    return int(round(value))
-
-
-def parse_float_token(token: str | None) -> float | None:
-    if token is None:
-        return None
-    return float(token.replace("p", "."))
-
-
-def parse_from_name(name: str, pattern: str) -> str | None:
-    match = re.search(pattern, name)
-    if match is None:
-        return None
-    return match.group(1)
+def write_csv(rows: list[dict[str, Any]], path: Path, preferred_keys: list[str] | None = None) -> None:
+    if not rows:
+        return
+    all_keys: set[str] = set()
+    for row in rows:
+        all_keys.update(row.keys())
+    if preferred_keys:
+        fieldnames = [k for k in preferred_keys if k in all_keys]
+        fieldnames += sorted(k for k in all_keys if k not in fieldnames)
+    else:
+        fieldnames = sorted(all_keys)
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
 
 
 def format_float_token(x: float) -> str:
+    """Format a float for use in filenames, replacing . with p."""
     return f"{float(x):.6g}".replace(".", "p").replace("-", "m")
 
 
-def format_float_for_title(x: float | int | str | None) -> str:
-    if x is None:
-        return "NA"
-    if isinstance(x, str):
-        return x
-    return f"{float(x):.6g}"
+def unique_non_none(rows: list[dict], key: str) -> list[Any]:
+    values = []
+    for row in rows:
+        v = row.get(key)
+        if v is not None and v not in values:
+            values.append(v)
+    return values
 
 
-def sanitize_filename(s: str, max_len: int = 120) -> str:
-    cleaned = (
-        str(s)
-        .replace("=", "-")
-        .replace(".", "p")
-        .replace("/", "-")
-        .replace(" ", "_")
-        .replace(":", "-")
-        .replace(",", "_")
-        .replace("__", "_")
-    )
-    # digest = hashlib.sha1(str(s).encode("utf-8")).hexdigest()[:10]
-    # if len(cleaned) <= max_len:
-    #     return f"{cleaned}__{digest}"
-    # return f"{cleaned[:max_len]}__{digest}"
-    if len(cleaned) <= max_len:
-        return cleaned
-    return cleaned[:max_len]
-
-def build_title_metadata(rows: list[dict[str, Any]]) -> str:
-    """
-    Build compact title metadata from one config-signature group.
-    Assumes these values are constant within the group.
-    """
-
-    def unique_non_none(key: str) -> list[Any]:
-        values = []
-        for row in rows:
-            value = row.get(key)
-            if value is not None and value not in values:
-                values.append(value)
-        return values
-
-    def one_or_mixed(key: str) -> Any:
-        values = unique_non_none(key)
-        if len(values) == 1:
-            return values[0]
-        if len(values) == 0:
-            return None
-        return "mixed"
-
-    kappa_star = one_or_mixed("kappa_star")
-    T = one_or_mixed("T")
-    beta_star = one_or_mixed("beta_star")
-    sigma_star = one_or_mixed("sigma_star")
-    lambda_reg = one_or_mixed("lambda_reg")
-    n_steps = one_or_mixed("n_steps")
-
-    return (
-        rf"$\kappa^\star = {format_float_for_title(kappa_star)}$, "
-        rf"$T = {format_float_for_title(T)}$, "
-        rf"$\beta^\star = {format_float_for_title(beta_star)}$, "
-        rf"$\sigma^\star = {format_float_for_title(sigma_star)}$, "
-        rf"$\lambda = {format_float_for_title(lambda_reg)}$, "
-        rf"iters $= {format_float_for_title(n_steps)}$"
-    )
-
-def resolve_r_star(raw_r_star: Any, d: int | None) -> int | None:
-    if raw_r_star is None:
-        return int(d) if d is not None else None
-
-    if isinstance(raw_r_star, str):
-        if raw_r_star.lower() == "d":
-            return int(d) if d is not None else None
-        return int(float(raw_r_star))
-
-    return int(raw_r_star)
-
-def group_teacher_signature(
-    teacher_init: str | None,
-    sigma_star: float | None,
-) -> tuple[str, float]:
-    """
-    Group standard_gaussian together with scaled_gaussian at sigma_star = 1.0.
-    """
-    init = "NA" if teacher_init is None else str(teacher_init)
-    sigma = 1.0 if sigma_star is None else float(sigma_star)
-
-    if init == "standard_gaussian":
-        return "scaled_gaussian", 1.0
-
-    if init == "scaled_gaussian" and np.isclose(sigma, 1.0):
-        return "scaled_gaussian", 1.0
-
-    return init, sigma
-
+def one_or_mixed(rows: list[dict], key: str) -> object | None:
+    values = unique_non_none(rows, key)
+    if len(values) == 1:
+        return values[0]
+    if len(values) == 0:
+        return None
+    return "mixed"
 
 def parse_int_from_folder(name: str, pattern: str) -> int | None:
     match = re.search(pattern, name)
@@ -175,21 +87,337 @@ def parse_float_from_folder(name: str, pattern: str) -> float | None:
     return float(match.group(1).replace("p", "."))
 
 
+# ---------------------------------------------------------------------
+# Type coercion helpers
+# ---------------------------------------------------------------------
+
+def get_int(row: dict, key: str) -> int | None:
+    v = row.get(key)
+    if v is None:
+        return None
+    try:
+        return int(float(v))
+    except (TypeError, ValueError):
+        return None
+
+
+def get_float(row: dict, key: str) -> float | None:
+    v = row.get(key)
+    if v is None:
+        return None
+    try:
+        f = float(v)
+        return None if (math.isnan(f) or math.isinf(f)) else f
+    except (TypeError, ValueError):
+        return None
+
+
+def parse_float_token(token: str | None) -> float | None:
+    if token is None:
+        return None
+    try:
+        return float(token.replace("p", "."))
+    except (TypeError, ValueError):
+        return None
+
+
+def parse_from_name(name: str, pattern: str) -> str | None:
+    m = re.search(pattern, name)
+    return m.group(1) if m else None
+
+
+# ---------------------------------------------------------------------
+# Aggregation helpers
+# ---------------------------------------------------------------------
+
+def grouped_mean_by_ntrain(
+    rows: list[dict],
+    keys_to_average: list[str],
+) -> list[dict]:
+    """Average numeric fields over rows sharing the same n_train."""
+    buckets: dict[int, list[dict]] = defaultdict(list)
+    for row in rows:
+        n = get_int(row, "n_train")
+        if n is not None:
+            buckets[n].append(row)
+
+    out = []
+    for n_train in sorted(buckets):
+        group = buckets[n_train]
+        merged: dict[str, Any] = {"n_train": n_train}
+        for key in keys_to_average:
+            vals = [get_float(r, key) for r in group if get_float(r, key) is not None]
+            merged[key] = float(sum(vals) / len(vals)) if vals else None
+        out.append(merged)
+    return out
+
+
+def first_unique(rows: list[dict], key: str) -> Any:
+    for row in rows:
+        v = row.get(key)
+        if v is not None:
+            return v
+    return None
+
+
+def one_or_mixed(rows: list[dict], key: str) -> Any:
+    values = {row[key] for row in rows if row.get(key) is not None}
+    if len(values) == 1:
+        return next(iter(values))
+    if len(values) == 0:
+        return None
+    return "mixed"
+
+
+# ---------------------------------------------------------------------
+# Metadata inference from folder structure
+# ---------------------------------------------------------------------
+
+def resolve_r_star(raw: Any, d: int | None) -> int | None:
+    if raw is None:
+        return None
+    if isinstance(raw, str) and raw.lower() == "d":
+        return d
+    try:
+        return int(float(raw))
+    except (TypeError, ValueError):
+        return None
+
+
+def format_mask_label(masking_strategy: str | None, masks_per_sample: Any) -> str | None:
+    if masking_strategy is None:
+        return None
+
+    s = str(masking_strategy).lower().strip()
+    k = 1
+    try:
+        k = int(float(masks_per_sample)) if masks_per_sample is not None else 1
+    except (TypeError, ValueError):
+        pass
+
+    # canonical strategy names from config
+    if s in ("maskall", "all"):
+        return "maskall"
+    if s in ("masklast", "last"):
+        return "masklast"
+    if s in ("maskrandom", "random"):
+        return "maskrandom" if k <= 1 else f"maskrandom_k{k}"
+    if s in ("k_random", "maskrandom_k2"):
+        return f"maskrandom_k{k}"
+    if s in ("multi_random", "maskmulti", "maskmulti_k2", "multi"):
+        return f"maskmulti_k{k}"
+
+    # fallback: try to parse from the string itself
+    return parse_mask_from_name(s)
+
+
+def parse_mask_from_name(name: str) -> str | None:
+    name_lower = name.lower()
+    # order matters: more specific patterns first
+    for mask in ["maskmulti_k2", "maskrandom_k2", "maskall", "masklast", "maskrandom"]:
+        # match with word boundary: mask name followed by _ or end
+        if re.search(rf"(?<![a-z]){re.escape(mask)}(?:_|$)", name_lower):
+            return mask
+    return None
+
+
+def infer_kappa_from_parent_dirs(path: Path) -> float | None:
+    for part in path.parts:
+        m = re.search(r"kappa_star_(\d+p\d+|\d+)", part)
+        if m:
+            return float(m.group(1).replace("p", "."))
+    return None
+
+
+def has_kappa_star_ancestor(path: Path) -> bool:
+    return any("kappa_star" in part for part in path.parts)
+
+
+def find_config_folder_name(summary_path: Path) -> str:
+    """Return the config-level folder name (two levels above summary.csv)."""
+    return summary_path.parent.parent.name
+
+
+def find_metrics_files(run_dir: Path) -> list[Path]:
+    return sorted(
+        p for p in run_dir.iterdir()
+        if p.is_file() and p.name.startswith("metrics") and p.name.endswith(".json")
+    )
+
+
+def find_config_files(run_dir: Path) -> list[Path]:
+    return sorted(
+        p for p in run_dir.iterdir()
+        if p.is_file() and p.name.startswith("config") and p.name.endswith(".json")
+    )
+
+
+def has_run_subdirs(path: Path) -> bool:
+    if not path.is_dir():
+        return False
+    for subdir in path.iterdir():
+        if subdir.is_dir() and find_metrics_files(subdir):
+            return True
+    return False
+
+
+def find_sweep_dirs(root: Path) -> list[Path]:
+    seen: set[Path] = set()
+    out: list[Path] = []
+    for path in [root, *root.rglob("*")]:
+        if has_run_subdirs(path):
+            resolved = path.resolve()
+            if resolved not in seen:
+                seen.add(resolved)
+                out.append(path)
+    return out
+
+
+# ---------------------------------------------------------------------
+# Title and formatting helpers
+# ---------------------------------------------------------------------
+
+def format_float_for_title(value: Any) -> str:
+    if value is None:
+        return "?"
+    if isinstance(value, str):
+        return value
+    try:
+        f = float(value)
+        if f == int(f):
+            return str(int(f))
+        return f"{f:g}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def sanitize_filename(s: str, max_len: int = 120) -> str:
+    cleaned = (
+        str(s)
+        .replace("=", "-")
+        .replace(".", "p")
+        .replace("/", "-")
+        .replace(" ", "_")
+        .replace(":", "-")
+        .replace(",", "_")
+    )
+    cleaned = re.sub(r"_+", "_", cleaned)
+    return cleaned[:max_len] if len(cleaned) > max_len else cleaned
+
+
+def group_teacher_signature(
+    teacher_init: str | None,
+    sigma_star: Any,
+) -> tuple[str, str]:
+    if teacher_init in (None, "standard_gaussian"):
+        return "scaled_gaussian", "1.0"
+    if teacher_init == "scaled_gaussian":
+        try:
+            s = float(sigma_star)
+            return "scaled_gaussian", f"{s:g}"
+        except (TypeError, ValueError):
+            return "scaled_gaussian", str(sigma_star)
+    return str(teacher_init), str(sigma_star)
+
+
+def build_title_metadata(rows: list[dict]) -> str:
+    T = one_or_mixed(rows, "T")
+    kappa_star = one_or_mixed(rows, "kappa_star")
+    beta_star = one_or_mixed(rows, "beta_star")
+    sigma_star = one_or_mixed(rows, "sigma_star")
+    lambda_reg = one_or_mixed(rows, "lambda_reg")
+    learning_rate = one_or_mixed(rows, "learning_rate")
+    n_steps = one_or_mixed(rows, "n_steps")
+    return (
+        rf"$\kappa^\star = {format_float_for_title(kappa_star)}$, "
+        rf"$T = {format_float_for_title(T)}$, "
+        rf"$\beta^\star = {format_float_for_title(beta_star)}$, "
+        rf"$\sigma^\star = {format_float_for_title(sigma_star)}$, "
+        rf"$\lambda = {format_float_for_title(lambda_reg)}$, "
+        rf"iters $= {format_float_for_title(n_steps)}$"
+    )
+
+
+def build_kappa_comparison_title(rows: list[dict]) -> str:
+    T = one_or_mixed(rows, "T")
+    beta_star = one_or_mixed(rows, "beta_star")
+    sigma_star = one_or_mixed(rows, "sigma_star")
+    lambda_reg = one_or_mixed(rows, "lambda_reg")
+    n_steps = one_or_mixed(rows, "n_steps")
+    return (
+        r"$"
+        rf"T = {format_float_for_title(T)},\ "
+        rf"\beta^\star = {format_float_for_title(beta_star)},\ "
+        rf"\sigma^\star = {format_float_for_title(sigma_star)},\ "
+        rf"\lambda = {format_float_for_title(lambda_reg)},\ "
+        rf"\mathrm{{iters}} = {format_float_for_title(n_steps)}"
+        r"$"
+    )
+
+
+def build_sweep_title(metric_title: str, base_config: dict | None) -> str:
+    """Build a multi-line plot title from a base_config dict."""
+    if base_config is None:
+        return metric_title
+
+    data_cfg = base_config.get("data", {})
+    model_cfg = base_config.get("model", {})
+    teacher_cfg = base_config.get("teacher", {})
+    training_cfg = base_config.get("training", {})
+
+    teacher_init = str(teacher_cfg.get("init", "NA")).replace("_", "-")
+    r_star_raw = teacher_cfg.get("r_star")
+    r_star = "d" if r_star_raw is None else str(r_star_raw)
+    beta_star = teacher_cfg.get("beta_star")
+    sigma_star = teacher_cfg.get("sigma_star")
+    masking_strategy = data_cfg.get("masking_strategy", "NA")
+    d = data_cfg.get("d")
+    T = data_cfg.get("T")
+    r = model_cfg.get("r")
+    beta = model_cfg.get("beta")
+    lambda_reg = training_cfg.get("lambda_reg")
+    learning_rate = training_cfg.get("learning_rate")
+    n_steps = training_cfg.get("n_steps")
+
+    line1 = ", ".join(filter(None, [
+        rf"$W^\star$: {teacher_init}",
+        rf"$r^\star = {r_star}$",
+        rf"$\beta^\star = {format_float_for_title(beta_star)}$" if beta_star is not None else None,
+        rf"$\sigma^\star = {format_float_for_title(sigma_star)}$" if sigma_star is not None else None,
+        f"Mask={masking_strategy}",
+        rf"$\lambda = {format_float_for_title(lambda_reg)}$" if lambda_reg is not None else None,
+        rf"$\beta = {format_float_for_title(beta)}$" if beta is not None else None,
+    ]))
+
+    line2 = ", ".join(filter(None, [
+        rf"$d = {d}$" if d is not None else None,
+        rf"$T = {T}$" if T is not None else None,
+        rf"$r = {r}$" if r is not None else None,
+        rf"$\eta = {format_float_for_title(learning_rate)}$" if learning_rate is not None else None,
+        rf"$\mathrm{{iters}} = {n_steps}$" if n_steps is not None else None,
+    ]))
+
+    parts = [metric_title, line1]
+    if line2:
+        parts.append(line2)
+    return "\n".join(parts)
+
+
+# ---------------------------------------------------------------------
+# Metadata extraction from summary.csv + sweep_config.json
+# ---------------------------------------------------------------------
+
 def find_first_run_config(sweep_dir: Path) -> dict[str, Any] | None:
     for subdir in sorted(sweep_dir.iterdir()):
         if not subdir.is_dir():
             continue
-
         config_files = sorted(
             p for p in subdir.iterdir()
             if p.is_file() and p.name.startswith("config") and p.name.endswith(".json")
         )
-
         if config_files:
             return read_json(config_files[0])
-
     return None
-
 
 def infer_metadata(summary_path: Path, rows: list[dict[str, str]]) -> dict[str, Any] | None:
     """
@@ -358,115 +586,86 @@ def infer_metadata(summary_path: Path, rows: list[dict[str, str]]) -> dict[str, 
     }
 
 
-
-def parse_mask_from_name(name: str) -> str | None:
-    known_masks = ["maskrandom_k", "maskmulti_k", "maskrandom", "maskall", "masklast"]
-
-    for mask in known_masks:
-        if name.startswith(mask):
-            if mask in {"maskrandom_k", "maskmulti_k"}:
-                match = re.match(r"(mask(?:random|multi)_k\d+)", name)
-                if match is not None:
-                    return match.group(1)
-            return mask
-
-    return None
-
-
-def format_mask_label(masking_strategy: str | None, masks_per_sample: int | None) -> str | None:
-    if masking_strategy is None:
-        return None
-
-    masking_strategy = str(masking_strategy)
-    k = 1 if masks_per_sample is None else int(masks_per_sample)
-
-    if masking_strategy == "random":
-        return "maskrandom" if k == 1 else f"maskrandom_k{k}"
-    if masking_strategy == "k_random":
-        return f"maskrandom_k{k}"
-    if masking_strategy == "multi_random":
-        return f"maskmulti_k{k}"
-    if masking_strategy == "all":
-        return "maskall"
-    if masking_strategy == "last":
-        return "masklast"
-
-    return masking_strategy
+def _build_config_signature(base_config: dict | None) -> str:
+    if base_config is None:
+        return "unknown_config"
+    data_cfg = base_config.get("data", {})
+    model_cfg = base_config.get("model", {})
+    teacher_cfg = base_config.get("teacher", {})
+    training_cfg = base_config.get("training", {})
+    teacher_init_canon, sigma_star_canon = group_teacher_signature(
+        teacher_init=teacher_cfg.get("init"),
+        sigma_star=teacher_cfg.get("sigma_star"),
+    )
+    parts = [
+        f"data_model={data_cfg.get('data_model')}",
+        f"T={data_cfg.get('T')}",
+        f"mask_value={data_cfg.get('mask_value')}",
+        f"teacher_init={teacher_init_canon}",
+        f"sigma_star={sigma_star_canon}",
+        f"beta_star={teacher_cfg.get('beta_star')}",
+        f"beta={model_cfg.get('beta')}",
+        f"normalize_sqrt_d={model_cfg.get('normalize_sqrt_d')}",
+        f"dtype={model_cfg.get('dtype')}",
+        f"lambda={training_cfg.get('lambda_reg')}",
+        f"lr={training_cfg.get('learning_rate')}",
+        f"n_steps={training_cfg.get('n_steps')}",
+    ]
+    return "__".join(parts)
 
 
-def unique_non_none(rows: list[dict], key: str) -> list[object]:
-    values = []
-    for row in rows:
-        value = row.get(key)
-        if value is not None and value not in values:
-            values.append(value)
-    return values
+# ---------------------------------------------------------------------
+# Crossing computation helpers
+# ---------------------------------------------------------------------
 
-
-def one_or_mixed(rows: list[dict], key: str) -> object | None:
-    values = unique_non_none(rows, key)
-    if len(values) == 1:
-        return values[0]
-    if len(values) == 0:
-        return None
-    return "mixed"
-
-
-def first_unique(rows: list[dict[str, Any]], key: str) -> Any:
-    values = []
-    for row in rows:
-        value = row.get(key)
-        if value is not None and value not in values:
-            values.append(value)
-
-    if len(values) == 1:
-        return values[0]
-    if len(values) == 0:
-        return None
-    return "mixed"
-
-
-def grouped_mean_by_ntrain(rows: list[dict[str, str]], keys: list[str]) -> list[dict[str, float | int | None]]:
-    grouped: dict[int, dict[str, list[float]]] = {}
-
-    for row in rows:
-        n_train = get_int(row, "n_train")
-        if n_train is None:
+def first_crossing_vs_baseline(
+    rows_by_ntrain: list[dict],
+    learned_key: str,
+    baseline_keys: list[str],
+) -> tuple[int | None, float | None, float | None]:
+    for row in rows_by_ntrain:
+        learned = get_float(row, learned_key)
+        baseline = None
+        for k in baseline_keys:
+            v = get_float(row, k)
+            if v is not None:
+                baseline = v
+                break
+        if learned is None or baseline is None:
             continue
-
-        grouped.setdefault(n_train, {key: [] for key in keys})
-
-        for key in keys:
-            value = get_float(row, key)
-            if value is not None:
-                grouped[n_train][key].append(value)
-
-    out = []
-    for n_train in sorted(grouped):
-        item: dict[str, float | int | None] = {"n_train": n_train}
-        for key, values in grouped[n_train].items():
-            item[key] = float(np.mean(values)) if values else None
-        out.append(item)
-
-    return out
+        if learned >= baseline:
+            return int(row["n_train"]), learned, baseline
+    return None, None, None
 
 
-def find_config_folder_name(summary_path: Path) -> str:
-    """
-    Expected structure:
-    root/kappa_star_x/config_folder/job_folder/summary.csv
-    Here summary_path.parent is the job folder.
-    summary_path.parent.parent is the config folder.
-    """
-    return summary_path.parent.parent.name
+def first_crossing_vs_constant(
+    rows_by_ntrain: list[dict],
+    learned_key: str,
+    baseline: float,
+) -> tuple[int | None, float | None, float | None]:
+    for row in rows_by_ntrain:
+        learned = get_float(row, learned_key)
+        if learned is not None and learned >= baseline:
+            return int(row["n_train"]), learned, baseline
+    return None, None, None
 
 
-def infer_kappa_from_parent_dirs(summary_path: Path) -> float | None:
-    for part in summary_path.parts:
-        match = re.match(r"kappa_star_([0-9p]+)$", part)
-        if match is not None:
-            return parse_float_token(match.group(1))
-    return None
-
-def has_kappa_star_ancestor(path: Path) -> bool:
-    return any(re.match(r"^kappa_star_[0-9p]+$", part) is not None for part in path.parts)
+def crossing_columns(
+    n_cross: int | None,
+    d: int,
+    kappa_star: float,
+    value: float | None,
+    baseline: float | None,
+    prefix: str,
+) -> dict[str, Any]:
+    return {
+        f"{prefix}_cross_ntrain": n_cross,
+        f"{prefix}_cross_over_d": n_cross / d if n_cross else None,
+        f"{prefix}_cross_over_d2": n_cross / d**2 if n_cross else None,
+        f"{prefix}_cross_over_kappa_d2": (
+            n_cross / (kappa_star * d**2)
+            if n_cross and kappa_star > 0 else None
+        ),
+        f"{prefix}_cross_value": value,
+        f"{prefix}_cross_baseline": baseline,
+    }
