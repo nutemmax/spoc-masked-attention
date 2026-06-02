@@ -60,7 +60,7 @@ plt.rcParams.update({
     "axes.labelsize": 26,
     "xtick.labelsize": 22,
     "ytick.labelsize": 22,
-    "legend.fontsize": 22,
+    "legend.fontsize": 20,
     "figure.titlesize": 30,
     "axes.grid": False,
     "mathtext.fontset": "cm",
@@ -562,44 +562,103 @@ def _crossing_plots_for_signature(
         bd = sig_dir / f"{bp}_crossings"
         bd.mkdir(parents=True, exist_ok=True)
 
-        # all masks on one plot
+        # all masks on one plot, fixed kappa_star
+        kappas = sorted({float(r["kappa_star"]) for r in aggregated if r.get("kappa_star") is not None})
+
         for ym, yl, ft in metric_specs:
+            for kstar in kappas:
+                k_rows = [
+                    r for r in aggregated
+                    if float(r["kappa_star"]) == kstar
+                ]
+
+                fig, ax = plt.subplots(figsize=(14, 10))
+                plotted = False
+
+                for i, mask in enumerate(masks):
+                    mask_rows = [r for r in k_rows if r["mask_label"] == mask]
+                    plotted |= _plot_crossing_curve(
+                        mask_rows,
+                        "d",
+                        f"{bp}_{ym}_mean",
+                        f"{bp}_{ym}_std",
+                        mask,
+                        ax,
+                        MARKERS[i % len(MARKERS)],
+                    )
+
+                if plotted:
+                    ax.set_xlabel(r"$d$")
+                    ax.set_ylabel(yl)
+
+                    if not no_title:
+                        ax.set_title(
+                            rf"{yl} vs $d$, all masks, $\kappa^\star={kstar:g}$, {bl}"
+                            + "\n"
+                            + title_meta
+                        )
+
+                    ax.legend(frameon=True, fontsize=18)
+
+                    kstr = str(kstar).replace(".", "p")
+                    save_fig(
+                        fig,
+                        bd / fname(
+                            f"{ft}_vs_d__all_masks__kappa{kstr}__{bp}.png",
+                            no_title,
+                        ),
+                    )
+                else:
+                    plt.close(fig)
+
+        # log-log n_cross vs d, all masks, fixed kappa_star
+        for kstar in kappas:
+            k_rows = [
+                r for r in aggregated
+                if float(r["kappa_star"]) == kstar
+            ]
+
             fig, ax = plt.subplots(figsize=(14, 10))
             plotted = False
+
             for i, mask in enumerate(masks):
-                mask_rows = [r for r in aggregated if r["mask_label"] == mask]
+                mask_rows = [r for r in k_rows if r["mask_label"] == mask]
                 plotted |= _plot_crossing_curve(
-                    mask_rows, "d", f"{bp}_{ym}_mean", f"{bp}_{ym}_std",
-                    mask, ax, MARKERS[i % len(MARKERS)])
+                    mask_rows,
+                    "d",
+                    f"{bp}_cross_ntrain_mean",
+                    f"{bp}_cross_ntrain_std",
+                    mask,
+                    ax,
+                    MARKERS[i % len(MARKERS)],
+                )
+
             if plotted:
+                ax.set_xscale("log")
+                ax.set_yscale("log")
                 ax.set_xlabel(r"$d$")
-                ax.set_ylabel(yl)
+                ax.set_ylabel(r"$n_{\mathrm{cross}}$")
+
                 if not no_title:
-                    ax.set_title(f"{yl} vs $d$, all masks, {bl}\n{title_meta}")
-                ax.legend(frameon=True, fontsize=24)
-                save_fig(fig, bd / fname(f"min_{ft}_vs_d__all_masks__{bp}.png", no_title))
+                    ax.set_title(
+                        rf"$n_{{\mathrm{{cross}}}}$ vs $d$ (log-log), all masks, "
+                        rf"$\kappa^\star={kstar:g}$, {bl}"
+                        + "\n"
+                        + title_meta
+                    )
+
+                ax.legend(frameon=True, fontsize=18)
+
+                kstr = str(kstar).replace(".", "p")
+                save_fig(
+                    fig,
+                    bd / fname(
+                        f"ncross_vs_d__all_masks_loglog__kappa{kstr}__{bp}.png",
+                        no_title,
+                    ),
+                )
             else:
                 plt.close(fig)
-
-        # log-log n_cross vs d, all masks
-        fig, ax = plt.subplots(figsize=(14, 10))
-        plotted = False
-        for i, mask in enumerate(masks):
-            mask_rows = [r for r in aggregated if r["mask_label"] == mask]
-            plotted |= _plot_crossing_curve(
-                mask_rows, "d", f"{bp}_cross_ntrain_mean", f"{bp}_cross_ntrain_std",
-                mask, ax, MARKERS[i % len(MARKERS)])
-        if plotted:
-            ax.set_xscale("log")
-            ax.set_yscale("log")
-            ax.set_xlabel(r"$d$")
-            ax.set_ylabel(r"$n_{\mathrm{cross}}$")
-            if not no_title:
-                ax.set_title(f"$n_{{\\mathrm{{cross}}}}$ vs $d$ (log-log), all masks, {bl}\n{title_meta}")
-            ax.legend(frameon=True, fontsize=24)
-            save_fig(fig, bd / fname(f"min_ntrain_vs_d__all_masks_loglog__{bp}.png", no_title))
-        else:
-            plt.close(fig)
 
         # kappa_star on x-axis, curves per d, one plot per mask
         for ym, yl, ft in metric_specs:
@@ -618,7 +677,7 @@ def _crossing_plots_for_signature(
                     ax.set_ylabel(yl)
                     if not no_title:
                         ax.set_title(f"{yl} vs $\\kappa^\\star$, {mask}, {bl}\n{title_meta}")
-                    ax.legend(title=r"$d$", title_fontsize=18, fontsize=16, frameon=True, ncol=2)
+                    ax.legend(title=r"$d$", title_fontsize=18, fontsize=20, frameon=True, ncol=2)
                     save_fig(fig, bd / fname(f"{ft}_vs_kappa__by_d__{mask}__{bp}.png", no_title))
                 else:
                     plt.close(fig)
