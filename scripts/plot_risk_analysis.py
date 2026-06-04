@@ -78,6 +78,15 @@ ALPHA_ZOOM_RANGES: list[tuple[float | None, float | None]] = [
     (0.0, 10.0),
 ]
 
+ALPHA_LIN_ZOOM_RANGES: list[tuple[float | None, float | None]] = [
+    (None, None),
+    (0.0, 5.0),
+    (0.0, 10.0),
+    (0.0, 20.0),
+    (0.0, 50.0),
+    (0.0, 100.0),
+]
+
 KAPPA_COLOURS = [
     "#1f77b4",
     "#ff7f0e",
@@ -230,6 +239,7 @@ def collect_rows(root: Path) -> list[dict[str, Any]]:
                 continue
 
             record: dict[str, Any] = {**metadata, "n_train": n_train}
+            record["alpha_lin"] = float(n_train) / float(d_value)
             record["alpha"] = float(n_train) / float(d_value ** 2)
 
             for key in COLLECT_KEYS:
@@ -529,13 +539,24 @@ def plot_scatter_by_kappa(
 # one plot per (mask, kappa_star), with alpha zoom variants
 # ---------------------------------------------------------------------
 
-def plot_cosine_and_risk_vs_alpha_by_d(
+# ---------------------------------------------------------------------
+# Plot: cosine similarity and population risk vs chosen x-axis
+# side-by-side panels, curves by d
+# one plot per (mask, kappa_star), with zoom variants
+# ---------------------------------------------------------------------
+
+def plot_cosine_and_risk_vs_x_by_d(
     rows: list[dict],
     mask_label: str,
     kappa_star: float,
     title_metadata: str,
     output_dir: Path,
     no_title: bool,
+    x_key: str,
+    x_label: str,
+    x_title: str,
+    filename_prefix: str,
+    xlim_ranges: list[tuple[int | float | None, int | float | None]],
 ) -> None:
     mask_rows = [r for r in rows if r["mask_label"] == mask_label]
     if not mask_rows:
@@ -550,9 +571,7 @@ def plot_cosine_and_risk_vs_alpha_by_d(
         for i, d in enumerate(ds)
     }
 
-    baseline_val = float(kappa_star) / (1.0 + float(kappa_star))
-
-    for xlim in ALPHA_ZOOM_RANGES:
+    for xlim in xlim_ranges:
         zs = zoom_suffix(xlim)
         lo, hi = xlim
 
@@ -588,12 +607,12 @@ def plot_cosine_and_risk_vs_alpha_by_d(
 
             xs_cos, means_cos, stds_cos = grouped_mean_std(
                 d_rows,
-                "alpha",
+                x_key,
                 "cosine_S_S_star",
             )
             xs_risk, means_risk, stds_risk = grouped_mean_std(
                 d_rows,
-                "alpha",
+                x_key,
                 "population_risk",
             )
 
@@ -644,17 +663,8 @@ def plot_cosine_and_risk_vs_alpha_by_d(
             plt.close(fig)
             continue
 
-        # ax_cos.axhline(
-        #     baseline_val,
-        #     linestyle="--",
-        #     linewidth=1.5,
-        #     color="black",
-        #     alpha=0.6,
-        #     label=r"random PSD baseline",
-        # )
-
-        ax_cos.set_xlabel(r"$\alpha = n_{\mathrm{train}}/d^2$")
-        ax_risk.set_xlabel(r"$\alpha = n_{\mathrm{train}}/d^2$")
+        ax_cos.set_xlabel(x_label)
+        ax_risk.set_xlabel(x_label)
 
         ax_cos.set_ylabel(r"$\cos(S,S^\star)$")
         ax_risk.set_ylabel("population risk")
@@ -663,11 +673,11 @@ def plot_cosine_and_risk_vs_alpha_by_d(
         ax_risk.legend(frameon=True, ncol=2)
 
         if not no_title:
-            zoom_txt = zoom_title_suffix(xlim, r"$\alpha$")
+            zoom_txt = zoom_title_suffix(xlim, x_title)
             fig.suptitle(
                 make_title(
-                    rf"Cosine similarity and population risk vs $\alpha$: {mask_label}, "
-                    rf"$\kappa^\star={kappa_star:g}${zoom_txt}",
+                    rf"Cosine similarity and population risk vs {x_title}: "
+                    rf"{mask_label}, $\kappa^\star={kappa_star:g}${zoom_txt}",
                     title_metadata,
                 )
             )
@@ -675,7 +685,7 @@ def plot_cosine_and_risk_vs_alpha_by_d(
         save_fig(
             fig,
             output_dir / fname(
-                f"cosine_and_risk_vs_alpha_{mask_label}_kappa{kstr}_{zs}.png",
+                f"{filename_prefix}_{mask_label}_kappa{kstr}_{zs}.png",
                 no_title,
             ),
         )
@@ -888,13 +898,46 @@ def run(root: Path, output_dir: Path, no_title: bool) -> None:
                 no_title=no_title,
             )
 
-            plot_cosine_and_risk_vs_alpha_by_d(
+            plot_cosine_and_risk_vs_x_by_d(
+                rows=group_rows,
+                mask_label=mask_label,
+                kappa_star=kappa_star,
+                title_metadata=title_meta,
+                output_dir=over_ntrain_dir / "cosine_and_risk_vs_ntrain",
+                no_title=no_title,
+                x_key="n_train",
+                x_label=r"$n_{\mathrm{train}}$",
+                x_title=r"$n_{\mathrm{train}}$",
+                filename_prefix="cosine_and_risk_vs_ntrain",
+                xlim_ranges=ZOOM_RANGES,
+            )
+
+            plot_cosine_and_risk_vs_x_by_d(
+                rows=group_rows,
+                mask_label=mask_label,
+                kappa_star=kappa_star,
+                title_metadata=title_meta,
+                output_dir=sig_dir / "over_alpha_lin" / "cosine_and_risk_vs_alpha_lin",
+                no_title=no_title,
+                x_key="alpha_lin",
+                x_label=r"$\alpha_{\mathrm{lin}} = n_{\mathrm{train}}/d$",
+                x_title=r"$\alpha_{\mathrm{lin}}$",
+                filename_prefix="cosine_and_risk_vs_alpha_lin",
+                xlim_ranges=ALPHA_LIN_ZOOM_RANGES,
+            )
+
+            plot_cosine_and_risk_vs_x_by_d(
                 rows=group_rows,
                 mask_label=mask_label,
                 kappa_star=kappa_star,
                 title_metadata=title_meta,
                 output_dir=over_alpha_dir / "cosine_and_risk_vs_alpha",
                 no_title=no_title,
+                x_key="alpha",
+                x_label=r"$\alpha = n_{\mathrm{train}}/d^2$",
+                x_title=r"$\alpha$",
+                filename_prefix="cosine_and_risk_vs_alpha",
+                xlim_ranges=ALPHA_ZOOM_RANGES,
             )
 
             plot_risk_by_d(

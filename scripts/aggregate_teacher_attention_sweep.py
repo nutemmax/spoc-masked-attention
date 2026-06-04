@@ -513,7 +513,7 @@ def build_teacher_attention_sweep_title(metric_title: str, base_config: dict | N
     n_steps = training_cfg.get("n_steps", None)
 
     line1_parts = [
-        rf"$W^\star$: {teacher_init}",
+        # rf"$W^\star$: {teacher_init}",
         rf"$r^\star = {r_star}$",
     ]
 

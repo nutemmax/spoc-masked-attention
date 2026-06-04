@@ -878,18 +878,266 @@ def _apply_zoom(
     return filtered_n, filtered_series
 
 
+
 def run_losses(
     rows: list[dict[str, Any]],
     output_dir: Path,
     no_title: bool,
 ) -> None:
     print("[losses] running...")
-    out = output_dir / "train_vs_risk"
+    out = output_dir / "train_loss_pop_risk"
 
-    groups: dict[tuple[str, float], list[dict]] = defaultdict(list)
+    groups: dict[tuple[str, float], list[dict[str, Any]]] = defaultdict(list)
     for r in rows:
         key = (str(r["config_signature"]), float(r["kappa_star"]))
         groups[key].append(r)
+
+    for (sig, kappa_star), group_rows in sorted(groups.items()):
+        title_meta = build_title_metadata(group_rows)
+        kstr = str(kappa_star).replace(".", "p")
+
+        sig_dir = (
+            out
+            / sanitize_filename(sig)
+            / f"kappa_star_{kstr}"
+        )
+
+        mask_labels = sorted({str(r["mask_label"]) for r in group_rows})
+        ds = sorted({int(r["d"]) for r in group_rows})
+
+        for mask_label in mask_labels:
+            mask_rows = [
+                r for r in group_rows
+                if str(r["mask_label"]) == mask_label
+            ]
+
+            for d in ds:
+                md_rows = [
+                    r for r in mask_rows
+                    if int(r["d"]) == d
+                ]
+                if not md_rows:
+                    continue
+
+                grouped = _aggregate_losses_and_cosine(md_rows)
+                pts = grouped.get(d, [])
+                if not pts:
+                    continue
+
+                ntrain = [int(p[0]) for p in pts]
+                train_loss = [p[1] for p in pts]
+                pop_risk = [p[2] for p in pts]
+
+                mask_dir = sig_dir / sanitize_filename(mask_label)
+                mask_dir.mkdir(parents=True, exist_ok=True)
+
+                for xlim in LOSS_ZOOM_RANGES:
+                    zs = _zoom_suffix(xlim)
+
+                    # --------------------------------------------------
+                    # Version 1: x-axis = raw n_train
+                    # --------------------------------------------------
+                    n_zoom, series_zoom = _apply_zoom(
+                        ntrain,
+                        train_loss,
+                        pop_risk,
+                        xlim=xlim,
+                    )
+                    train_zoom, risk_zoom = series_zoom
+
+                    xs_train = []
+                    ys_train = []
+                    xs_risk = []
+                    ys_risk = []
+
+                    for x, y in zip(n_zoom, train_zoom):
+                        if y is not None:
+                            xs_train.append(float(x))
+                            ys_train.append(float(y))
+
+                    for x, y in zip(n_zoom, risk_zoom):
+                        if y is not None:
+                            xs_risk.append(float(x))
+                            ys_risk.append(float(y))
+
+                    if xs_train or xs_risk:
+                        fig, ax = plt.subplots(figsize=(14, 10))
+
+                        if xs_train:
+                            plot_curve_on_ax(
+                                ax=ax,
+                                xs=np.array(xs_train, dtype=float),
+                                ys=np.array(ys_train, dtype=float),
+                                stds=None,
+                                label="train loss",
+                                marker="o",
+                                color="#1f77b4",
+                                alpha=0.9,
+                                linewidth=2.5,
+                                markersize=7,
+                            )
+
+                        if xs_risk:
+                            plot_curve_on_ax(
+                                ax=ax,
+                                xs=np.array(xs_risk, dtype=float),
+                                ys=np.array(ys_risk, dtype=float),
+                                stds=None,
+                                label="population risk",
+                                marker="s",
+                                color="#ff7f0e",
+                                alpha=0.9,
+                                linewidth=2.5,
+                                markersize=7,
+                            )
+                            # Make population risk dashed after plotting.
+                            # ax.lines[-1].set_linestyle("--")
+
+                        ax.set_xlabel(r"$n_{\mathrm{train}}$")
+                        ax.set_ylabel("train loss / population risk")
+
+                        if xlim != (None, None):
+                            lo, hi = xlim
+                            ax.set_xlim(left=lo, right=hi)
+
+                        if not no_title:
+                            zoom_text = ""
+                            if xlim != (None, None):
+                                lo, hi = xlim
+                                zoom_text = rf", $n_{{\mathrm{{train}}}}\in[{lo},{hi}]$"
+
+                            ax.set_title(
+                                "Train loss and population risk vs "
+                                rf"$n_{{\mathrm{{train}}}}$: {mask_label}, "
+                                rf"$d={d}$, $\kappa^\star={kappa_star:g}$"
+                                f"{zoom_text}\n{title_meta}"
+                            )
+
+                        ax.legend(frameon=True)
+
+                        save_fig(
+                            fig,
+                            mask_dir / fname(
+                                f"train_loss_pop_risk_{mask_label}_d{d}_kappa{kstr}_{zs}.png",
+                                no_title,
+                            ),
+                        )
+
+                    # --------------------------------------------------
+                    # Version 2: x-axis = alpha = n_train / d^2
+                    # Same zoom ranges, divided by d^2
+                    # --------------------------------------------------
+                    alpha_xs = [float(n) / float(d ** 2) for n in ntrain]
+
+                    if xlim == (None, None):
+                        alpha_xlim = (None, None)
+                    else:
+                        lo, hi = xlim
+                        alpha_xlim = (
+                            None if lo is None else float(lo) / float(d ** 2),
+                            None if hi is None else float(hi) / float(d ** 2),
+                        )
+
+                    lo_alpha, hi_alpha = alpha_xlim
+                    alpha_mask = [
+                        (lo_alpha is None or x >= lo_alpha)
+                        and (hi_alpha is None or x <= hi_alpha)
+                        for x in alpha_xs
+                    ]
+
+                    alpha_zoom = [
+                        x for x, keep in zip(alpha_xs, alpha_mask)
+                        if keep
+                    ]
+                    train_alpha_zoom = [
+                        y for y, keep in zip(train_loss, alpha_mask)
+                        if keep
+                    ]
+                    risk_alpha_zoom = [
+                        y for y, keep in zip(pop_risk, alpha_mask)
+                        if keep
+                    ]
+
+                    xs_train_alpha = []
+                    ys_train_alpha = []
+                    xs_risk_alpha = []
+                    ys_risk_alpha = []
+
+                    for x, y in zip(alpha_zoom, train_alpha_zoom):
+                        if y is not None:
+                            xs_train_alpha.append(float(x))
+                            ys_train_alpha.append(float(y))
+
+                    for x, y in zip(alpha_zoom, risk_alpha_zoom):
+                        if y is not None:
+                            xs_risk_alpha.append(float(x))
+                            ys_risk_alpha.append(float(y))
+
+                    if xs_train_alpha or xs_risk_alpha:
+                        fig, ax = plt.subplots(figsize=(14, 10))
+
+                        if xs_train_alpha:
+                            plot_curve_on_ax(
+                                ax=ax,
+                                xs=np.array(xs_train_alpha, dtype=float),
+                                ys=np.array(ys_train_alpha, dtype=float),
+                                stds=None,
+                                label="train loss",
+                                marker="o",
+                                color="#1f77b4",
+                                alpha=0.9,
+                                linewidth=2.5,
+                                markersize=7,
+                            )
+
+                        if xs_risk_alpha:
+                            plot_curve_on_ax(
+                                ax=ax,
+                                xs=np.array(xs_risk_alpha, dtype=float),
+                                ys=np.array(ys_risk_alpha, dtype=float),
+                                stds=None,
+                                label="population risk",
+                                marker="s",
+                                color="#ff7f0e",
+                                alpha=0.9,
+                                linewidth=2.5,
+                                markersize=7,
+                            )
+                            # Make population risk dashed after plotting.
+                            # ax.lines[-1].set_linestyle("--")
+
+                        ax.set_xlabel(r"$\alpha = n_{\mathrm{train}}/d^2$")
+                        ax.set_ylabel("train loss / population risk")
+
+                        if alpha_xlim != (None, None):
+                            ax.set_xlim(left=lo_alpha, right=hi_alpha)
+
+                        if not no_title:
+                            zoom_text = ""
+                            if xlim != (None, None):
+                                zoom_text = (
+                                    rf", $\alpha\in"
+                                    rf"[{lo_alpha:.4g},{hi_alpha:.4g}]$"
+                                )
+
+                            ax.set_title(
+                                "Train loss and population risk vs "
+                                rf"$\alpha$: {mask_label}, "
+                                rf"$d={d}$, $\kappa^\star={kappa_star:g}$"
+                                f"{zoom_text}\n{title_meta}"
+                            )
+
+                        ax.legend(frameon=True)
+
+                        save_fig(
+                            fig,
+                            mask_dir / fname(
+                                f"train_loss_pop_risk_alpha_{mask_label}_d{d}_kappa{kstr}_{zs}.png",
+                                no_title,
+                            ),
+                        )
+
+        print(f"[losses] sig={sig}, kappa_star={kappa_star} done")
 
     print(f"[losses] done -> {out}")
 
