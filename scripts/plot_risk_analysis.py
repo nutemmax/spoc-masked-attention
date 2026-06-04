@@ -868,14 +868,14 @@ def run(root: Path, output_dir: Path, no_title: bool) -> None:
 
     for (sig, kappa_star), group_rows in sorted(groups.items()):
         title_meta = build_title_metadata(group_rows)
-        sig_dir = output_dir / sanitize_filename(sig) / f"kappa_star_{str(kappa_star).replace('.', 'p')}"
+        sig_dir = output_dir / f"kappa_star_{str(kappa_star).replace('.', 'p')}"
         sig_dir.mkdir(parents=True, exist_ok=True)
 
         masks = sorted({str(r["mask_label"]) for r in group_rows})
         ds = sorted({int(r["d"]) for r in group_rows})
         
-        over_ntrain_dir = sig_dir / "over_ntrain"
-        over_alpha_dir = sig_dir / "over_alpha"
+        over_ntrain_dir = sig_dir
+        over_alpha_dir = sig_dir 
 
         for mask_label in masks:
             for d in ds:
@@ -917,7 +917,7 @@ def run(root: Path, output_dir: Path, no_title: bool) -> None:
                 mask_label=mask_label,
                 kappa_star=kappa_star,
                 title_metadata=title_meta,
-                output_dir=sig_dir / "over_alpha_lin" / "cosine_and_risk_vs_alpha_lin",
+                output_dir=sig_dir  / "cosine_and_risk_vs_alpha_lin",
                 no_title=no_title,
                 x_key="alpha_lin",
                 x_label=r"$\alpha_{\mathrm{lin}} = n_{\mathrm{train}}/d$",
