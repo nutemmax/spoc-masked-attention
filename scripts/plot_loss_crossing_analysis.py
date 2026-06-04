@@ -28,7 +28,6 @@ from crossing_utils import (
     has_kappa_star_ancestor,
     infer_metadata,
     read_csv_rows,
-    sanitize_filename,
     write_csv,
 )
 
@@ -38,7 +37,7 @@ plt.rcParams.update({
     "axes.labelsize": 26,
     "xtick.labelsize": 22,
     "ytick.labelsize": 22,
-    "legend.fontsize": 18,
+    "legend.fontsize": 20,
     "figure.titlesize": 30,
     "axes.grid": False,
     "mathtext.fontset": "cm",

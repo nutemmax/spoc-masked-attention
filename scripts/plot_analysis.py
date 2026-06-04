@@ -55,12 +55,12 @@ from crossing_utils import (
 # ---------------------------------------------------------------------
 
 plt.rcParams.update({
-    "font.size": 18,
+    "font.size": 20,
     "axes.titlesize": 26,
     "axes.labelsize": 26,
     "xtick.labelsize": 22,
     "ytick.labelsize": 22,
-    "legend.fontsize": 20,
+    "legend.fontsize": 22,
     "figure.titlesize": 30,
     "axes.grid": False,
     "mathtext.fontset": "cm",
@@ -765,7 +765,7 @@ def run_crossings(
 
     for base_sig, sig_rows in sorted(base_groups.items()):
         title_meta = build_kappa_comparison_title(sig_rows)
-        sig_dir = out / sanitize_filename(base_sig)
+        sig_dir = out
         _crossing_plots_for_signature(sig_rows, sig_dir, title_meta, no_title)
 
     print(f"[crossings] done -> {out}")
@@ -927,7 +927,7 @@ def run_losses(
                 train_loss = [p[1] for p in pts]
                 pop_risk = [p[2] for p in pts]
 
-                mask_dir = sig_dir / sanitize_filename(mask_label)
+                mask_dir = sig_dir
                 mask_dir.mkdir(parents=True, exist_ok=True)
 
                 for xlim in LOSS_ZOOM_RANGES:
