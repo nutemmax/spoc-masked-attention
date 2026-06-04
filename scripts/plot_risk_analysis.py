@@ -24,6 +24,7 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
+
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -68,6 +69,15 @@ ZOOM_RANGES: list[tuple[int | None, int | None]] = [
     (0, 10000),
 ]
 
+ALPHA_ZOOM_RANGES: list[tuple[float | None, float | None]] = [
+    (None, None),
+    (0.0, 0.5),
+    (0.0, 1.0),
+    (0.0, 2.0),
+    (0.0, 5.0),
+    (0.0, 10.0),
+]
+
 KAPPA_COLOURS = [
     "#1f77b4",
     "#ff7f0e",
@@ -93,15 +103,16 @@ COLLECT_KEYS = [
 # Helpers
 # ---------------------------------------------------------------------
 
-def zoom_suffix(xlim: tuple[int | None, int | None]) -> str:
+def zoom_suffix(xlim: tuple[int | float | None, int | float | None]) -> str:
     if xlim == (None, None):
         return "full"
-    left = str(xlim[0]) if xlim[0] is not None else "min"
-    right = str(xlim[1]) if xlim[1] is not None else "max"
+    left = str(xlim[0]).replace(".", "p") if xlim[0] is not None else "min"
+    right = str(xlim[1]).replace(".", "p") if xlim[1] is not None else "max"
     return f"zoom_{left}_{right}"
 
+
 def zoom_title_suffix(
-    xlim: tuple[int | None, int | None],
+    xlim: tuple[int | float | None, int | float | None],
     variable_latex: str,
 ) -> str:
     if xlim == (None, None):
@@ -116,6 +127,7 @@ def zoom_title_suffix(
 
 def make_title(first_line: str, title_metadata: str) -> str:
     return first_line + "\n" + title_metadata
+
 
 def fname(name: str, no_title: bool) -> str:
     if not no_title:
@@ -163,6 +175,7 @@ def base_config_signature(sig: str) -> str:
         kept.append(part)
     return "__".join(kept)
 
+
 def title_field(
     label_latex: str,
     value: object | None,
@@ -192,6 +205,7 @@ def build_title_metadata_without_kappa(rows: list[dict]) -> str:
 
     return ", ".join(part for part in parts if part is not None)
 
+
 # ---------------------------------------------------------------------
 # Data loading
 # ---------------------------------------------------------------------
@@ -207,18 +221,26 @@ def collect_rows(root: Path) -> list[dict[str, Any]]:
         metadata = infer_metadata(summary_path, rows)
         if metadata is None:
             continue
+
+        d_value = int(metadata["d"])
+
         for row in rows:
             n_train = get_int(row, "n_train")
             if n_train is None:
                 continue
+
             record: dict[str, Any] = {**metadata, "n_train": n_train}
+            record["alpha"] = float(n_train) / float(d_value ** 2)
+
             for key in COLLECT_KEYS:
                 record[key] = get_float(row, key)
-            # compute generalisation gap directly
+
             train = get_float(row, "train_loss")
             risk = get_float(row, "population_risk")
             record["gen_gap"] = (risk - train) if (train is not None and risk is not None) else None
+
             all_rows.append(record)
+
     return all_rows
 
 
@@ -272,24 +294,39 @@ def plot_stacked(
             constrained_layout=True,
         )
 
-        # top panel: cosine similarity
         if xs_cos.size > 0:
             xc, yc = crop(xs_cos, means_cos)
             ax_top.plot(xc, yc, marker="o", linewidth=2, markersize=5, label=r"$\cos(S, S^\star)$")
+
         if baseline_val is not None:
-            ax_top.axhline(baseline_val, linestyle="--", linewidth=1.5,
-                           color="black", alpha=0.5, label=r"random PSD baseline")
+            ax_top.axhline(
+                baseline_val,
+                linestyle="--",
+                linewidth=1.5,
+                color="black",
+                alpha=0.5,
+                label=r"random PSD baseline",
+            )
+
         ax_top.set_ylabel(r"$\cos(S, S^\star)$")
         ax_top.legend(frameon=True)
 
-        # bottom panel: train loss and population risk
         if xs_train.size > 0:
             xt, yt = crop(xs_train, means_train)
             ax_bot.plot(xt, yt, marker="o", linewidth=2, markersize=5, label="train loss")
+
         if xs_risk.size > 0:
             xr, yr = crop(xs_risk, means_risk)
-            ax_bot.plot(xr, yr, marker="s", linewidth=2, markersize=5,
-                        linestyle="--", label="population risk")
+            ax_bot.plot(
+                xr,
+                yr,
+                marker="s",
+                linewidth=2,
+                markersize=5,
+                linestyle="--",
+                label="population risk",
+            )
+
         ax_bot.set_xlabel(r"$n_{\mathrm{train}}$")
         ax_bot.set_ylabel("Train loss / Population risk")
         ax_bot.legend(frameon=True)
@@ -304,13 +341,17 @@ def plot_stacked(
             )
 
         kstr = str(kappa_star).replace(".", "p")
-        save_fig(fig, output_dir / fname(
-            f"stacked_{mask_label}_d{d}_kappa{kstr}_{zs}.png", no_title))
+        save_fig(
+            fig,
+            output_dir / fname(
+                f"stacked_{mask_label}_d{d}_kappa{kstr}_{zs}.png",
+                no_title,
+            ),
+        )
 
 
 # ---------------------------------------------------------------------
-# Plot 2: parametric scatter (cosine, risk/loss/gap) coloured by n_train
-# one plot per (mask, d, kappa_star) -- finest grain
+# Parametric trajectory helper
 # ---------------------------------------------------------------------
 
 def _parametric_trajectory(
@@ -352,22 +393,12 @@ def plot_scatter_by_d(
         return
 
     ds = sorted({r["d"] for r in mask_rows})
-    cmap = plt.cm.viridis # options: viridis, plasma, inferno, magma
+    cmap = plt.cm.viridis
     colours = {d: cmap(i / max(len(ds) - 1, 1)) for i, d in enumerate(ds)}
     kstr = str(kappa_star).replace(".", "p")
 
-
-    # default colours
-    # ds = sorted({r["d"] for r in mask_rows})
-    # default_colours = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-    # colours = {
-    #     d: default_colours[i % len(default_colours)]
-    #     for i, d in enumerate(ds)
-    # }
-    # kstr = str(kappa_star).replace(".", "p")
-
     for y_key, y_label, plot_tag in [
-        ("population_risk",  "population risk",         "pop_risk"),
+        ("population_risk", "population risk", "pop_risk"),
     ]:
         fig, ax = plt.subplots(figsize=(10, 7.5))
         any_plotted = False
@@ -377,8 +408,17 @@ def plot_scatter_by_d(
             ns, xv, yv = _parametric_trajectory(d_rows, "cosine_S_S_star", y_key)
             if len(ns) == 0:
                 continue
-            ax.plot(xv, yv, color=colours[d], linewidth=1.8,
-                    marker="o", markersize=4, alpha=0.85, label=rf"$d={d}$")
+
+            ax.plot(
+                xv,
+                yv,
+                color=colours[d],
+                linewidth=1.8,
+                marker="o",
+                markersize=4,
+                alpha=0.85,
+                label=rf"$d={d}$",
+            )
             any_plotted = True
 
         if not any_plotted:
@@ -388,6 +428,7 @@ def plot_scatter_by_d(
         ax.set_xlabel(r"$\cos(S, S^\star)$")
         ax.set_ylabel(y_label)
         ax.legend(frameon=True, ncol=2)
+
         if not no_title:
             ax.set_title(
                 make_title(
@@ -395,8 +436,14 @@ def plot_scatter_by_d(
                     title_metadata,
                 )
             )
-        save_fig(fig, output_dir / fname(
-            f"scatter_by_d_{plot_tag}_vs_cosine_{mask_label}_kappa{kstr}.png", no_title))
+
+        save_fig(
+            fig,
+            output_dir / fname(
+                f"scatter_by_d_{plot_tag}_vs_cosine_{mask_label}_kappa{kstr}.png",
+                no_title,
+            ),
+        )
 
 
 # ---------------------------------------------------------------------
@@ -428,7 +475,7 @@ def plot_scatter_by_kappa(
         d_rows = [r for r in mask_rows if r["d"] == d]
 
         for y_key, y_label, plot_tag in [
-            ("population_risk",  "population risk",         "pop_risk"),
+            ("population_risk", "population risk", "pop_risk"),
         ]:
             fig, ax = plt.subplots(figsize=(10, 7.5))
             any_plotted = False
@@ -438,9 +485,17 @@ def plot_scatter_by_kappa(
                 ns, xv, yv = _parametric_trajectory(k_rows, "cosine_S_S_star", y_key)
                 if len(ns) == 0:
                     continue
-                ax.plot(xv, yv, color=colours[kstar], linewidth=1.8,
-                        marker="o", markersize=4, alpha=0.85,
-                        label=rf"$\kappa^\star={kstar}$")
+
+                ax.plot(
+                    xv,
+                    yv,
+                    color=colours[kstar],
+                    linewidth=1.8,
+                    marker="o",
+                    markersize=4,
+                    alpha=0.85,
+                    label=rf"$\kappa^\star={kstar}$",
+                )
                 any_plotted = True
 
             if not any_plotted:
@@ -450,6 +505,7 @@ def plot_scatter_by_kappa(
             ax.set_xlabel(r"$\cos(S, S^\star)$")
             ax.set_ylabel(y_label)
             ax.legend(frameon=True)
+
             if not no_title:
                 ax.set_title(
                     make_title(
@@ -457,8 +513,172 @@ def plot_scatter_by_kappa(
                         title_metadata,
                     )
                 )
-            save_fig(fig, output_dir / fname(
-                f"scatter_by_kappa_{plot_tag}_vs_cosine_{mask_label}_d{d}.png", no_title))
+
+            save_fig(
+                fig,
+                output_dir / fname(
+                    f"scatter_by_kappa_{plot_tag}_vs_cosine_{mask_label}_d{d}.png",
+                    no_title,
+                ),
+            )
+
+
+# ---------------------------------------------------------------------
+# Plot: cosine similarity and population risk vs alpha = n_train / d^2
+# side-by-side panels, curves by d
+# one plot per (mask, kappa_star), with alpha zoom variants
+# ---------------------------------------------------------------------
+
+def plot_cosine_and_risk_vs_alpha_by_d(
+    rows: list[dict],
+    mask_label: str,
+    kappa_star: float,
+    title_metadata: str,
+    output_dir: Path,
+    no_title: bool,
+) -> None:
+    mask_rows = [r for r in rows if r["mask_label"] == mask_label]
+    if not mask_rows:
+        return
+
+    ds = sorted({int(r["d"]) for r in mask_rows})
+    kstr = str(kappa_star).replace(".", "p")
+
+    default_colours = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    colours = {
+        d: default_colours[i % len(default_colours)]
+        for i, d in enumerate(ds)
+    }
+
+    baseline_val = float(kappa_star) / (1.0 + float(kappa_star))
+
+    for xlim in ALPHA_ZOOM_RANGES:
+        zs = zoom_suffix(xlim)
+        lo, hi = xlim
+
+        fig, (ax_cos, ax_risk) = plt.subplots(
+            1,
+            2,
+            figsize=(16, 6.5),
+            sharex=True,
+            constrained_layout=True,
+        )
+
+        any_plotted = False
+
+        def crop(
+            xs: np.ndarray,
+            means: np.ndarray,
+            stds: np.ndarray,
+        ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+            if xs.size == 0:
+                return xs, means, stds
+
+            mask_arr = np.ones(len(xs), dtype=bool)
+            if lo is not None:
+                mask_arr &= xs >= lo
+            if hi is not None:
+                mask_arr &= xs <= hi
+
+            return xs[mask_arr], means[mask_arr], stds[mask_arr]
+
+        for d in ds:
+            d_rows = [r for r in mask_rows if int(r["d"]) == d]
+            colour = colours[d]
+
+            xs_cos, means_cos, stds_cos = grouped_mean_std(
+                d_rows,
+                "alpha",
+                "cosine_S_S_star",
+            )
+            xs_risk, means_risk, stds_risk = grouped_mean_std(
+                d_rows,
+                "alpha",
+                "population_risk",
+            )
+
+            xs_cos, means_cos, stds_cos = crop(xs_cos, means_cos, stds_cos)
+            xs_risk, means_risk, stds_risk = crop(xs_risk, means_risk, stds_risk)
+
+            if xs_cos.size > 0:
+                ax_cos.plot(
+                    xs_cos,
+                    means_cos,
+                    marker="o",
+                    linewidth=2,
+                    markersize=5,
+                    color=colour,
+                    label=rf"$d={d}$",
+                )
+                if np.any(stds_cos > 0):
+                    ax_cos.fill_between(
+                        xs_cos,
+                        means_cos - stds_cos,
+                        means_cos + stds_cos,
+                        color=colour,
+                        alpha=0.12,
+                    )
+                any_plotted = True
+
+            if xs_risk.size > 0:
+                ax_risk.plot(
+                    xs_risk,
+                    means_risk,
+                    marker="o",
+                    linewidth=2,
+                    markersize=5,
+                    color=colour,
+                    label=rf"$d={d}$",
+                )
+                if np.any(stds_risk > 0):
+                    ax_risk.fill_between(
+                        xs_risk,
+                        means_risk - stds_risk,
+                        means_risk + stds_risk,
+                        color=colour,
+                        alpha=0.12,
+                    )
+                any_plotted = True
+
+        if not any_plotted:
+            plt.close(fig)
+            continue
+
+        # ax_cos.axhline(
+        #     baseline_val,
+        #     linestyle="--",
+        #     linewidth=1.5,
+        #     color="black",
+        #     alpha=0.6,
+        #     label=r"random PSD baseline",
+        # )
+
+        ax_cos.set_xlabel(r"$\alpha = n_{\mathrm{train}}/d^2$")
+        ax_risk.set_xlabel(r"$\alpha = n_{\mathrm{train}}/d^2$")
+
+        ax_cos.set_ylabel(r"$\cos(S,S^\star)$")
+        ax_risk.set_ylabel("population risk")
+
+        ax_cos.legend(frameon=True, ncol=2)
+        ax_risk.legend(frameon=True, ncol=2)
+
+        if not no_title:
+            zoom_txt = zoom_title_suffix(xlim, r"$\alpha$")
+            fig.suptitle(
+                make_title(
+                    rf"Cosine similarity and population risk vs $\alpha$: {mask_label}, "
+                    rf"$\kappa^\star={kappa_star:g}${zoom_txt}",
+                    title_metadata,
+                )
+            )
+
+        save_fig(
+            fig,
+            output_dir / fname(
+                f"cosine_and_risk_vs_alpha_{mask_label}_kappa{kstr}_{zs}.png",
+                no_title,
+            ),
+        )
 
 
 # ---------------------------------------------------------------------
@@ -497,17 +717,22 @@ def plot_risk_by_d(
                 xs, means, stds = grouped_mean_std(d_rows, "n_train", metric_key)
                 if xs.size == 0:
                     continue
+
                 mask_arr = np.ones(len(xs), dtype=bool)
                 if lo is not None:
                     mask_arr &= xs >= lo
                 if hi is not None:
                     mask_arr &= xs <= hi
+
                 xs, means, stds = xs[mask_arr], means[mask_arr], stds[mask_arr]
                 if len(xs) == 0:
                     continue
+
                 ax.plot(xs, means, marker="o", linewidth=2, markersize=5, label=rf"$d={d}$")
+
                 if np.any(stds > 0):
                     ax.fill_between(xs, means - stds, means + stds, alpha=0.12)
+
                 any_plotted = True
 
             if not any_plotted:
@@ -517,6 +742,7 @@ def plot_risk_by_d(
             ax.set_xlabel(r"$n_{\mathrm{train}}$")
             ax.set_ylabel(y_label)
             ax.legend(frameon=True, ncol=2)
+
             if not no_title:
                 zoom_txt = zoom_title_suffix(xlim, r"$n_{\mathrm{train}}$")
                 ax.set_title(
@@ -525,8 +751,14 @@ def plot_risk_by_d(
                         title_metadata,
                     )
                 )
-            save_fig(fig, output_dir / fname(
-                f"{plot_tag}_by_d_{mask_label}_kappa{kstr}_{zs}.png", no_title))
+
+            save_fig(
+                fig,
+                output_dir / fname(
+                    f"{plot_tag}_by_d_{mask_label}_kappa{kstr}_{zs}.png",
+                    no_title,
+                ),
+            )
 
 
 # ---------------------------------------------------------------------
@@ -561,17 +793,22 @@ def plot_gen_gap_by_d(
             xs, means, stds = grouped_mean_std(d_rows, "n_train", "gen_gap")
             if xs.size == 0:
                 continue
+
             mask_arr = np.ones(len(xs), dtype=bool)
             if lo is not None:
                 mask_arr &= xs >= lo
             if hi is not None:
                 mask_arr &= xs <= hi
+
             xs, means, stds = xs[mask_arr], means[mask_arr], stds[mask_arr]
             if len(xs) == 0:
                 continue
+
             ax.plot(xs, means, marker="o", linewidth=2, markersize=5, label=rf"$d={d}$")
+
             if np.any(stds > 0):
                 ax.fill_between(xs, means - stds, means + stds, alpha=0.12)
+
             any_plotted = True
 
         if not any_plotted:
@@ -582,6 +819,7 @@ def plot_gen_gap_by_d(
         ax.set_xlabel(r"$n_{\mathrm{train}}$")
         ax.set_ylabel("GG = (population risk $-$ train loss)")
         ax.legend(frameon=True, ncol=2)
+
         if not no_title:
             zoom_txt = zoom_title_suffix(xlim, r"$n_{\mathrm{train}}$")
             ax.set_title(
@@ -590,30 +828,24 @@ def plot_gen_gap_by_d(
                     title_metadata,
                 )
             )
-        save_fig(fig, output_dir / fname(
-            f"gen_gap_by_d_{mask_label}_kappa{kstr}_{zs}.png", no_title))
+
+        save_fig(
+            fig,
+            output_dir / fname(
+                f"gen_gap_by_d_{mask_label}_kappa{kstr}_{zs}.png",
+                no_title,
+            ),
+        )
 
 
 # ---------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------
+
 def run(root: Path, output_dir: Path, no_title: bool) -> None:
     print("loading data...")
     rows = collect_rows(root)
     print(f"loaded {len(rows)} records")
-
-
-    # DEBUG print
-    # print("\nAvailable kappas by base_config_signature, mask, d:")
-    # tmp = defaultdict(set)
-    # for r in rows:
-    #     base_sig = base_config_signature(str(r["config_signature"]))
-    #     key = (base_sig, str(r["mask_label"]), int(r["d"]))
-    #     tmp[key].add(float(r["kappa_star"]))
-
-    # for key, kappas in sorted(tmp.items()):
-    #     sig, mask, d = key
-    #     print(f"sig={sig}, mask={mask}, d={d}: kappas={sorted(kappas)}")
 
     if not rows:
         print("no data found — did you run aggregate_teacher_attention_sweep.py first?")
@@ -631,6 +863,9 @@ def run(root: Path, output_dir: Path, no_title: bool) -> None:
 
         masks = sorted({str(r["mask_label"]) for r in group_rows})
         ds = sorted({int(r["d"]) for r in group_rows})
+        
+        over_ntrain_dir = sig_dir / "over_ntrain"
+        over_alpha_dir = sig_dir / "over_alpha"
 
         for mask_label in masks:
             for d in ds:
@@ -640,7 +875,7 @@ def run(root: Path, output_dir: Path, no_title: bool) -> None:
                     d=d,
                     kappa_star=kappa_star,
                     title_metadata=title_meta,
-                    output_dir=sig_dir / "stacked",
+                    output_dir=over_ntrain_dir / "stacked",
                     no_title=no_title,
                 )
 
@@ -653,12 +888,21 @@ def run(root: Path, output_dir: Path, no_title: bool) -> None:
                 no_title=no_title,
             )
 
+            plot_cosine_and_risk_vs_alpha_by_d(
+                rows=group_rows,
+                mask_label=mask_label,
+                kappa_star=kappa_star,
+                title_metadata=title_meta,
+                output_dir=over_alpha_dir / "cosine_and_risk_vs_alpha",
+                no_title=no_title,
+            )
+
             plot_risk_by_d(
                 rows=group_rows,
                 mask_label=mask_label,
                 kappa_star=kappa_star,
                 title_metadata=title_meta,
-                output_dir=sig_dir / "risk_by_d",
+                output_dir=over_ntrain_dir / "risk_by_d",
                 no_title=no_title,
             )
 
@@ -667,11 +911,12 @@ def run(root: Path, output_dir: Path, no_title: bool) -> None:
                 mask_label=mask_label,
                 kappa_star=kappa_star,
                 title_metadata=title_meta,
-                output_dir=sig_dir / "gen_gap",
+                output_dir=over_ntrain_dir / "gen_gap",
                 no_title=no_title,
             )
 
             print(f"  mask={mask_label}, kappa_star={kappa_star} done")
+
 
     sig_groups: dict[str, list[dict]] = defaultdict(list)
     for r in rows:
@@ -694,17 +939,24 @@ def run(root: Path, output_dir: Path, no_title: bool) -> None:
     print(f"done -> {output_dir}")
 
 
-
 # ---------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--root", type=str, required=True,
-                        help="Root directory containing kappa_star_* folders.")
-    parser.add_argument("--output-dir", type=str, default=None,
-                        help="Output directory. Defaults to <root>/analysis/risk_analysis.")
+    parser.add_argument(
+        "--root",
+        type=str,
+        required=True,
+        help="Root directory containing kappa_star_* folders.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default=None,
+        help="Output directory. Defaults to <root>/analysis/risk_analysis.",
+    )
     parser.add_argument("--no-title", action="store_true")
     args = parser.parse_args()
 
