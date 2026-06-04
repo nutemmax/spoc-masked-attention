@@ -786,7 +786,7 @@ def main() -> None:
         base_groups[base_sig].append(row)
 
     for base_sig, group_rows in sorted(base_groups.items()):
-        group_dir = output_dir / sanitize_filename(base_sig)
+        group_dir = output_dir
         make_plots(group_rows, group_dir, args.no_title)
 
     print(f"[done] Wrote per-sweep rows to: {per_sweep_path}")

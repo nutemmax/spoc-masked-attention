@@ -357,7 +357,7 @@ def run_cosine_by_d(
 
     for (sig, kappa_star), group_rows in sorted(groups.items()):
         title_meta = build_title_metadata(group_rows)
-        sig_dir = out / sanitize_filename(sig) / f"kappa_star_{str(kappa_star).replace('.', 'p')}"
+        sig_dir = out / f"kappa_star_{str(kappa_star).replace('.', 'p')}"
 
         for mask_label in sorted({str(r["mask_label"]) for r in group_rows}):
             plot_cosine_by_d_for_mask(
@@ -898,7 +898,6 @@ def run_losses(
 
         sig_dir = (
             out
-            / sanitize_filename(sig)
             / f"kappa_star_{kstr}"
         )
 
